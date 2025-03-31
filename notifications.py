@@ -12,14 +12,17 @@ class NotificationSystem:
         self.bot = bot
         self.notification_tasks = []
         self.queued_notifications = defaultdict(list)  # Store notifications by user_id
-        self.quiet_start = time(22, 0)  # 10:00 PM
-        self.quiet_end = time(8, 0)     # 8:00 AM
+        self.quiet_start = time(1, 0)   # 1:00 AM
+        self.quiet_end = time(7, 0)     # 7:00 AM
         self.is_quiet_hours = False
 
     def is_quiet_time(self, current_time: datetime) -> bool:
         """Check if current time is within quiet hours"""
         current = current_time.time()
-        return self.quiet_start <= current or current < self.quiet_end
+        # Handle the case when quiet hours span across midnight (1 AM to 7 AM)
+        if self.quiet_start > self.quiet_end:
+            return current >= self.quiet_start or current < self.quiet_end
+        return self.quiet_start <= current < self.quiet_end
 
     async def start(self):
         """Start all notification tasks"""
@@ -40,13 +43,18 @@ class NotificationSystem:
 
     async def send_notification(self, user_id: int, message: str):
         """Send notification or queue it if in quiet hours"""
-        now = datetime.now()
-        if self.is_quiet_time(now):
-            # Queue the notification
+        try:
+            now = datetime.now()
+            if self.is_quiet_time(now):
+                # Queue the notification
+                self.queued_notifications[user_id].append(message)
+            else:
+                # Send immediately
+                await self.bot.send_message(chat_id=user_id, text=message)
+        except Exception as e:
+            print(f"Error sending notification: {e}")
+            # If sending fails, queue the notification
             self.queued_notifications[user_id].append(message)
-        else:
-            # Send immediately
-            await self.bot.send_message(user_id, message)
 
     async def notify_new_task(self, task: Task, assignee: User):
         """Send notification when a new task is assigned"""
@@ -61,7 +69,7 @@ class NotificationSystem:
 
     async def notify_status_change(self, task: Task, assignee: User, manager: User, new_status: str):
         """Send notification when task status changes"""
-        # Notify manager
+        # Notify manager when assignee changes status
         manager_message = (
             f"🔄 Task Status Updated!\n\n"
             f"🔹 Task ID: {task.id}\n"
@@ -72,7 +80,7 @@ class NotificationSystem:
         )
         await self.send_notification(manager.telegram_id, manager_message)
 
-        # Notify assignee
+        # Notify assignee when manager changes status
         assignee_message = (
             f"🔄 Your Task Status Has Been Updated!\n\n"
             f"🔹 Task ID: {task.id}\n"
@@ -81,6 +89,18 @@ class NotificationSystem:
             f"New Status: {new_status}"
         )
         await self.send_notification(assignee.telegram_id, assignee_message)
+
+    async def notify_task_deleted(self, task: Task, assignee: User, deleted_by: User):
+        """Send notification when a task is deleted"""
+        message = (
+            f"🗑️ Task Deleted\n\n"
+            f"🔹 Task ID: {task.id}\n"
+            f"📄 Description: {task.description}\n"
+            f"📅 Due Date: {task.due_date.strftime('%d.%m.%Y')}\n"
+            f"Status: {task.status}\n"
+            f"Deleted by: {deleted_by.first_name} {deleted_by.last_name}"
+        )
+        await self.send_notification(assignee.telegram_id, message)
 
     async def notify_due_date_reminder(self, task: Task, assignee: User):
         """Send notification one day before due date"""

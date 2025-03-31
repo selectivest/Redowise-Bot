@@ -1,9 +1,12 @@
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, BotCommand, BotCommandScopeDefault, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from database.models import User, UserRole
+from aiogram.types import Message, BotCommand, BotCommandScopeDefault, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from database.models import User, UserRole, Team, TeamMember
 from database.connection import async_session
 from sqlalchemy import select
+from handlers.team import TeamStates
+from handlers.task import TaskStates
 
 router = Router()
 
@@ -13,30 +16,21 @@ async def set_commands(bot):
         BotCommand(command="help", description="Show detailed help information"),
         BotCommand(command="menu", description="Show main menu"),
         BotCommand(command="show_keyboard", description="Show keyboard menu"),
-        BotCommand(command="hide_keyboard", description="Hide keyboard menu"),
-        BotCommand(command="create_team", description="Create a new team (Manager only)"),
-        BotCommand(command="createteam", description="Create a new team (Manager only)"),
-        BotCommand(command="add_member", description="Add member to team (Manager only)"),
-        BotCommand(command="add_task", description="Create a new task"),
-        BotCommand(command="tasks", description="View your tasks")
+        BotCommand(command="hide_keyboard", description="Hide keyboard menu")
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
 
 def get_keyboard_menu(user: User = None) -> ReplyKeyboardMarkup:
     """Create keyboard menu based on user role"""
     buttons = [
-        [KeyboardButton(text="📝 Tasks"), KeyboardButton(text="👥 Teams")],
-        [KeyboardButton(text="❓ Help"), KeyboardButton(text="ℹ️ About")]
+        [KeyboardButton(text="📝 Add Task"), KeyboardButton(text="👥 Add Member")],
+        [KeyboardButton(text="➕ Create Team"), KeyboardButton(text="📋 Tasks")]
     ]
-    
-    # Add manager-specific buttons
-    if user and user.role == UserRole.MANAGER:
-        buttons.insert(0, [KeyboardButton(text="➕ Create Team"), KeyboardButton(text="👤 Add Member")])
     
     return ReplyKeyboardMarkup(
         keyboard=buttons,
         resize_keyboard=True,
-        input_field_placeholder="Select an option or type a command"
+        input_field_placeholder="Select an option"
     )
 
 @router.message(Command("start"))
@@ -128,15 +122,6 @@ async def cmd_help(message: Message, user: User):
 /show_keyboard - Show keyboard menu
 /hide_keyboard - Hide keyboard menu
 
-*Team Management:*
-/create_team - Create a new team (Manager only)
-/createteam - Create a new team (Manager only)
-/add_member - Add a member to your team (Manager only)
-
-*Task Management:*
-/add_task - Create a new task
-/tasks - View your tasks
-
 *User Roles:*
 👨‍💼 *Manager*
 • Can create and manage teams
@@ -151,42 +136,79 @@ async def cmd_help(message: Message, user: User):
 
 *How to Use:*
 1. Start with /start to register
-2. Create a team using /create_team (Manager only)
-3. Add team members using /add_member (Manager only)
-4. Create tasks using /add_task
-5. View tasks using /tasks
+2. Use the keyboard menu to:
+   • Create a team
+   • Add team members
+   • Create tasks
+   • View tasks
 
 Need more help? Use /menu to access the main menu.
 """
     await message.answer(help_text, parse_mode="Markdown")
 
-@router.message(F.text == "📝 Tasks")
-async def handle_tasks_button(message: Message, user: User):
-    await message.answer(
-        "📝 *Tasks Management*\n\n"
-        "• /add_task - Create a new task\n"
-        "• /tasks - View your tasks\n\n"
-        "Tasks can be assigned to team members and tracked.",
-        parse_mode="Markdown"
-    )
+@router.message(F.text == "📝 Add Task")
+async def handle_add_task_button(message: Message, state: FSMContext, user: User):
+    # Get user's teams
+    async with async_session() as session:
+        query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
+        result = await session.execute(query)
+        teams = result.scalars().all()
+        
+        if not teams:
+            await message.answer("You need to be a member of a team to add tasks. Create or join a team first.")
+            return
+    
+    # Create inline keyboard for team selection
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=team.name, callback_data=f"team_{team.id}")]
+        for team in teams
+    ])
+    
+    await state.set_state(TaskStates.waiting_for_team_selection)
+    await message.answer("Select the team to add the task to:", reply_markup=keyboard)
 
-@router.message(F.text == "👥 Teams")
-async def handle_teams_button(message: Message, user: User):
-    if user.role == UserRole.MANAGER:
-        await message.answer(
-            "👥 *Teams Management*\n\n"
-            "• /create_team - Create a new team\n"
-            "• /createteam - Create a new team\n"
-            "• /add_member - Add member to team\n\n"
-            "Use these commands to manage your teams.",
-            parse_mode="Markdown"
+@router.message(F.text == "👥 Add Member")
+async def handle_add_member_button(message: Message, state: FSMContext, user: User):
+    # Get user's teams where they are a manager
+    async with async_session() as session:
+        query = select(Team).join(TeamMember).where(
+            TeamMember.user_id == user.id,
+            TeamMember.role == "Manager"
         )
-    else:
-        await message.answer(
-            "👥 *Teams*\n\n"
-            "You are a team member. Contact your team manager for team-related actions.",
-            parse_mode="Markdown"
-        )
+        result = await session.execute(query)
+        teams = result.scalars().all()
+        
+        if not teams:
+            await message.answer("You need to be a manager of a team to add members. Create a team first.")
+            return
+    
+    await state.set_state(TeamStates.waiting_for_member_username)
+    await message.answer("Please enter the Telegram username of the new member:")
+
+@router.message(F.text == "➕ Create Team")
+async def handle_create_team_button(message: Message, state: FSMContext, user: User):
+    await state.set_state(TeamStates.waiting_for_team_name)
+    await message.answer("Please enter the name for your new team:")
+
+@router.message(F.text == "📋 Tasks")
+async def handle_tasks_button(message: Message, user: User):
+    async with async_session() as session:
+        # Get user's teams
+        query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
+        result = await session.execute(query)
+        teams = result.scalars().all()
+        
+        if not teams:
+            await message.answer("You need to be a member of a team first.")
+            return
+        
+        # Create inline keyboard for team selection
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=team.name, callback_data=f"view_tasks_{team.id}")]
+            for team in teams
+        ])
+        
+        await message.answer("Select a team to view tasks:", reply_markup=keyboard)
 
 @router.message(F.text == "❓ Help")
 async def handle_help_button(message: Message, user: User):
@@ -206,32 +228,6 @@ async def handle_about_button(message: Message):
         parse_mode="Markdown"
     )
 
-@router.message(F.text == "➕ Create Team")
-async def handle_create_team_button(message: Message, user: User):
-    if user.role == UserRole.MANAGER:
-        await message.answer(
-            "To create a new team, use the /create_team command.",
-            parse_mode="Markdown"
-        )
-    else:
-        await message.answer(
-            "Only managers can create teams.",
-            parse_mode="Markdown"
-        )
-
-@router.message(F.text == "👤 Add Member")
-async def handle_add_member_button(message: Message, user: User):
-    if user.role == UserRole.MANAGER:
-        await message.answer(
-            "To add a member to your team, use the /add_member command.",
-            parse_mode="Markdown"
-        )
-    else:
-        await message.answer(
-            "Only managers can add team members.",
-            parse_mode="Markdown"
-        )
-
 @router.callback_query(F.data.startswith("menu_"))
 async def process_menu_callback(callback: CallbackQuery):
     action = callback.data.split("_")[1]
@@ -240,7 +236,6 @@ async def process_menu_callback(callback: CallbackQuery):
         await callback.message.answer(
             "👥 *Teams Management*\n\n"
             "• /create_team - Create a new team\n"
-            "• /createteam - Create a new team\n"
             "• /add_member - Add member to team\n\n"
             "Note: Team management features are available for managers only.",
             parse_mode="Markdown"

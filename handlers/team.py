@@ -18,7 +18,7 @@ class TeamStates(StatesGroup):
 # Store pending invitations
 pending_invitations = {}
 
-@router.message(Command("create_team", "createteam"))
+@router.message(Command("create_team"))
 async def cmd_create_team(message: Message, state: FSMContext, user: User):
     await state.set_state(TeamStates.waiting_for_team_name)
     await message.answer("Please enter the name for your new team:")

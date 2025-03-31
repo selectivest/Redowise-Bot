@@ -11,6 +11,9 @@ from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
 from notifications import NotificationSystem
 import re
 import asyncio
+import calendar as cal
+from typing import Tuple, Optional
+from aiogram.filters.callback_data import CallbackData
 
 router = Router()
 notification_system = None
@@ -26,8 +29,195 @@ class TaskStates(StatesGroup):
     waiting_for_task_due_date = State()
     waiting_for_calendar_selection = State()
 
+class CustomCalendarCallback(CallbackData, prefix="calendar"):
+    action: str
+    year: int
+    month: int
+    day: str
+
+class CustomCalendar(SimpleCalendar):
+    def __init__(self, show_alerts: bool = True):
+        super().__init__(show_alerts=show_alerts)  # Pass show_alerts as a keyword argument
+        self.today = datetime.now()
+        self.tomorrow = self.today + timedelta(days=1)
+        self.max_date = self.today + timedelta(days=365)
+        self.current_date = self.today  # Track current displayed date
+        
+    def _get_calendar(self, year: int, month: int) -> InlineKeyboardMarkup:
+        inline_kb = []
+        inline_kb.append(self._get_days_of_week())
+        
+        month_calendar = cal.monthcalendar(year, month)
+        for week in month_calendar:
+            inline_kb.append(self._get_days_buttons(week, year, month))
+            
+        inline_kb.append(self._get_navigation_buttons(year, month))
+        return InlineKeyboardMarkup(inline_keyboard=inline_kb)
+    
+    def _get_days_of_week(self) -> list:
+        # Use English weekday names
+        weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        return [InlineKeyboardButton(text=day, callback_data="ignore") for day in weekdays]
+    
+    def _get_days_buttons(self, week: list, year: int, month: int) -> list:
+        buttons = []
+        for day in week:
+            if day == 0:
+                buttons.append(InlineKeyboardButton(text=" ", callback_data=" "))
+                continue
+                
+            date = datetime(year, month, day)
+            if date < self.today:
+                # Past dates are disabled
+                buttons.append(InlineKeyboardButton(
+                    text=f"❌{day}",
+                    callback_data="ignore"
+                ))
+            elif date > self.max_date:
+                # Future dates beyond max_date are disabled
+                buttons.append(InlineKeyboardButton(
+                    text=f"❌{day}",
+                    callback_data="ignore"
+                ))
+            elif date.date() == self.today.date():
+                # Today is highlighted with blue circle
+                buttons.append(InlineKeyboardButton(
+                    text=f"🔵{day}",
+                    callback_data=CustomCalendarCallback(
+                        action="DAY",
+                        year=year,
+                        month=month,
+                        day=date.strftime("%Y-%m-%d")
+                    ).pack()
+                ))
+            else:
+                # Normal dates
+                buttons.append(InlineKeyboardButton(
+                    text=str(day),
+                    callback_data=CustomCalendarCallback(
+                        action="DAY",
+                        year=year,
+                        month=month,
+                        day=date.strftime("%Y-%m-%d")
+                    ).pack()
+                ))
+        return buttons
+    
+    def _get_navigation_buttons(self, year: int, month: int) -> list:
+        buttons = []
+        
+        # Previous month button
+        if month == 1:
+            prev_month = 12
+            prev_year = year - 1
+        else:
+            prev_month = month - 1
+            prev_year = year
+            
+        # Check if previous month has any selectable days
+        prev_date = datetime(prev_year, prev_month, 1)
+        if prev_date >= self.today:
+            # Check if there are any selectable days in the previous month
+            month_calendar = cal.monthcalendar(prev_year, prev_month)
+            has_selectable_days = False
+            for week in month_calendar:
+                for day in week:
+                    if day != 0:  # Skip empty days
+                        date = datetime(prev_year, prev_month, day)
+                        if self.today <= date <= self.max_date:
+                            has_selectable_days = True
+                            break
+                if has_selectable_days:
+                    break
+            
+            if has_selectable_days:
+                buttons.append(InlineKeyboardButton(
+                    text="◀️",
+                    callback_data=CustomCalendarCallback(
+                        action="PREV",
+                        year=prev_year,
+                        month=prev_month,
+                        day=""
+                    ).pack()
+                ))
+            else:
+                buttons.append(InlineKeyboardButton(text="◀️", callback_data="ignore"))
+        else:
+            buttons.append(InlineKeyboardButton(text="◀️", callback_data="ignore"))
+            
+        # Current month/year display using English month names
+        month_names = ["January", "February", "March", "April", "May", "June",
+                      "July", "August", "September", "October", "November", "December"]
+        buttons.append(InlineKeyboardButton(
+            text=f"{month_names[month-1]} {year}",
+            callback_data="ignore"
+        ))
+        
+        # Next month button
+        if month == 12:
+            next_month = 1
+            next_year = year + 1
+        else:
+            next_month = month + 1
+            next_year = year
+            
+        # Check if next month has any selectable days
+        next_date = datetime(next_year, next_month, 1)
+        if next_date <= self.max_date:
+            # Check if there are any selectable days in the next month
+            month_calendar = cal.monthcalendar(next_year, next_month)
+            has_selectable_days = False
+            for week in month_calendar:
+                for day in week:
+                    if day != 0:  # Skip empty days
+                        date = datetime(next_year, next_month, day)
+                        if self.today <= date <= self.max_date:
+                            has_selectable_days = True
+                            break
+                if has_selectable_days:
+                    break
+            
+            if has_selectable_days:
+                buttons.append(InlineKeyboardButton(
+                    text="▶️",
+                    callback_data=CustomCalendarCallback(
+                        action="NEXT",
+                        year=next_year,
+                        month=next_month,
+                        day=""
+                    ).pack()
+                ))
+            else:
+                buttons.append(InlineKeyboardButton(text="▶️", callback_data="ignore"))
+        else:
+            buttons.append(InlineKeyboardButton(text="▶️", callback_data="ignore"))
+            
+        return buttons
+
+    async def process_selection(self, callback: CallbackQuery, callback_data: CustomCalendarCallback) -> Tuple[bool, Optional[datetime]]:
+        if callback_data.action == "DAY":
+            date = datetime.strptime(callback_data.day, "%Y-%m-%d")
+            if date < self.today:
+                await callback.answer("❌ Cannot select a date before today!", show_alert=True)
+                return False, None
+            if date > self.max_date:
+                await callback.answer("❌ Cannot select a date beyond one year!", show_alert=True)
+                return False, None
+            return True, date
+        elif callback_data.action in ["PREV", "NEXT"]:
+            # Update current date for navigation
+            self.current_date = datetime(callback_data.year, callback_data.month, 1)
+            return False, None
+        return False, None
+
+    async def start_calendar(self) -> InlineKeyboardMarkup:
+        return self._get_calendar(self.current_date.year, self.current_date.month)
+
 @router.message(Command("add_task"))
 async def cmd_add_task(message: Message, state: FSMContext, user: User):
+    # Clear any existing state data first
+    await state.clear()
+    
     # Get user's teams
     async with async_session() as session:
         query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
@@ -82,6 +272,9 @@ async def process_member_selection(callback: CallbackQuery, state: FSMContext):
 
 @router.message(TaskStates.waiting_for_task_description)
 async def process_task_description(message: Message, state: FSMContext):
+    # Clear any existing description from state
+    await state.update_data(description=None)
+    # Set the new description
     await state.update_data(description=message.text)
     
     # Create keyboard with predefined options
@@ -102,11 +295,16 @@ async def process_deadline_selection(callback: CallbackQuery, state: FSMContext,
     deadline_type = callback.data.split('_')[1]
     
     if deadline_type == 'calendar':
-        # Show calendar with basic settings
-        calendar = SimpleCalendar(show_alerts=True)
-        calendar.set_dates_range(datetime.now(), datetime.now() + timedelta(days=365))
+        # Show calendar with custom settings
+        calendar = CustomCalendar(show_alerts=True)
         await state.set_state(TaskStates.waiting_for_calendar_selection)
-        await callback.message.answer("Please select a date:", reply_markup=await calendar.start_calendar())
+        await callback.message.answer(
+            "Please select a date:\n"
+            "🔵 Today\n"
+            "❌ Disabled dates (past or beyond 1 year)\n"
+            "📅 Available dates",
+            reply_markup=await calendar.start_calendar()
+        )
         await callback.answer()
         return
     
@@ -131,12 +329,12 @@ async def process_deadline_selection(callback: CallbackQuery, state: FSMContext,
     await create_task(callback.message, state, user)
     await callback.answer()
 
-@router.callback_query(SimpleCalendarCallback.filter(), TaskStates.waiting_for_calendar_selection)
-async def process_calendar_selection(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext, user: User):
-    # Show calendar with basic settings
-    calendar = SimpleCalendar(show_alerts=True)
-    calendar.set_dates_range(datetime.now(), datetime.now() + timedelta(days=365))
+@router.callback_query(CustomCalendarCallback.filter(), TaskStates.waiting_for_calendar_selection)
+async def process_calendar_selection(callback: CallbackQuery, callback_data: CustomCalendarCallback, state: FSMContext, user: User):
+    # Create calendar with custom settings
+    calendar = CustomCalendar(show_alerts=True)
     
+    # Process the selection
     selected, date = await calendar.process_selection(callback, callback_data)
     
     if selected:
@@ -145,6 +343,7 @@ async def process_calendar_selection(callback: CallbackQuery, callback_data: Sim
         await callback.answer()
     else:
         try:
+            # Update the calendar markup
             await callback.message.edit_reply_markup(reply_markup=await calendar.start_calendar())
             await callback.answer()
         except Exception as e:
@@ -156,6 +355,13 @@ async def process_calendar_selection(callback: CallbackQuery, callback_data: Sim
 async def create_task(message: Message, state: FSMContext, user: User):
     data = await state.get_data()
     
+    # Verify we have all required data
+    required_fields = ['description', 'due_date', 'team_id', 'assignee_id']
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        await message.answer(f"Error: Missing required data: {', '.join(missing_fields)}")
+        return
+    
     async with async_session() as session:
         task = Task(
             description=data['description'],
@@ -163,7 +369,7 @@ async def create_task(message: Message, state: FSMContext, user: User):
             team_id=data['team_id'],
             creator_id=user.id,
             assignee_id=data['assignee_id'],
-            status="To Do"
+            status="To Do"  # Set initial status
         )
         session.add(task)
         await session.commit()
@@ -172,14 +378,6 @@ async def create_task(message: Message, state: FSMContext, user: User):
         assignee_query = select(User).where(User.id == data['assignee_id'])
         assignee_result = await session.execute(assignee_query)
         assignee = assignee_result.scalar_one_or_none()
-        
-        # Get manager info for notification
-        manager_query = select(User).join(TeamMember).where(
-            TeamMember.team_id == data['team_id'],
-            TeamMember.role == "Manager"
-        )
-        manager_result = await session.execute(manager_query)
-        manager = manager_result.scalar_one_or_none()
         
         # Send notification to assignee
         if assignee and notification_system:
@@ -198,16 +396,8 @@ async def create_task(message: Message, state: FSMContext, user: User):
                         asyncio.create_task(
                             notification_system.schedule_due_date_reminder(task, assignee, delay)
                         )
-        
-        # Send notifications based on who made the change
-        if notification_system:
-            if manager and assignee:
-                # If manager changed status, notify assignee
-                await notification_system.notify_status_change(task, assignee, user, data['status'])
-            elif not manager and assignee:
-                # If assignee changed status, notify manager
-                await notification_system.notify_status_change(task, user, manager, data['status'])
     
+    # Clear the state after successful task creation
     await state.clear()
     await message.answer(f"Task has been created successfully!")
 
@@ -300,7 +490,8 @@ async def view_member_tasks(callback: CallbackQuery, user: User):
             await callback.message.answer("Only managers can view other members' tasks.")
             return
     
-    await show_tasks(callback.message, team_id, member_id, user.role)
+    # Pass is_manager=True to show_tasks for managers
+    await show_tasks(callback.message, team_id, member_id, user.role, is_manager=True)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("view_all_tasks_"))
@@ -308,10 +499,6 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
     # Fix the callback data parsing
     data_parts = callback.data.split('_')
     team_id = int(data_parts[3])  # Changed from 2 to 3
-    
-    print(f"Viewing all tasks for team {team_id}")
-    print(f"User ID: {user.id}")
-    print(f"User Role: {user.role}")
     
     async with async_session() as session:
         # Check if user is a manager of this team
@@ -323,31 +510,17 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
         result = await session.execute(query)
         is_manager = result.scalar_one_or_none() is not None
         
-        print(f"Is manager: {is_manager}")
-        
-        if not is_manager:
-            await callback.message.answer("Only managers can view all tasks.")
-            return
-        
         # Get all tasks for the team
         query = select(Task).where(Task.team_id == team_id)
-        print(f"Query: {query}")
         result = await session.execute(query)
         tasks = result.scalars().all()
-        
-        print(f"Found {len(tasks)} tasks")
         
         if not tasks:
             await callback.message.answer("No tasks found.")
             return
         
-        # Format tasks
         tasks_text = "📋 Tasks:\n\n"
         for task in tasks:
-            print(f"Task ID: {task.id}")
-            print(f"Task Status: {task.status}")
-            print(f"Task Assignee: {task.assignee_id}")
-            
             remaining_days = get_remaining_days(task.due_date) if task.due_date else None
             due_date_str = f"{task.due_date.strftime('%d.%m.%Y')}({remaining_days} days)" if task.due_date else "No due date"
             status_emoji = {
@@ -372,30 +545,33 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
             # Create status update buttons for each task
             buttons = []
             
-            # Add status update button
-            buttons.append(
-                InlineKeyboardButton(
-                    text="🔄 In Progress" if task.status == "To Do" else "✅ Done" if task.status == "In Progress" else "📝 To Do",
-                    callback_data=f"update_status_{task.id}_{'In Progress' if task.status == 'To Do' else 'Done' if task.status == 'In Progress' else 'To Do'}"
+            # Show status update button if:
+            # 1. User is a manager (can change any status)
+            # 2. User is the assignee and task is not Done
+            if is_manager or (callback.from_user.id == task.assignee_id and task.status != "Done"):
+                buttons.append(
+                    InlineKeyboardButton(
+                        text="🔄 In Progress" if task.status == "To Do" else "✅ Done" if task.status == "In Progress" else "📝 To Do",
+                        callback_data=f"update_status_{task.id}_{'In Progress' if task.status == 'To Do' else 'Done' if task.status == 'In Progress' else 'To Do'}"
+                    )
                 )
-            )
             
-            # Add delete button for managers
-            buttons.append(
-                InlineKeyboardButton(
-                    text="🗑️ Delete",
-                    callback_data=f"delete_task_{task.id}"
+            # Add delete button for managers (always show for managers)
+            if is_manager:
+                buttons.append(
+                    InlineKeyboardButton(
+                        text="🗑️ Delete",
+                        callback_data=f"delete_task_{task.id}"
+                    )
                 )
-            )
             
             status_keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
-            
             await callback.message.answer(tasks_text, reply_markup=status_keyboard)
             tasks_text = ""  # Clear for next task
         
         await callback.answer()
 
-async def show_tasks(message, team_id: int, member_id: int | None, user_role: UserRole):
+async def show_tasks(message, team_id: int, member_id: int | None, user_role: UserRole, is_manager: bool = False):
     async with async_session() as session:
         # Build query based on user role and member_id
         query = select(Task).where(Task.team_id == team_id)
@@ -413,15 +589,6 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
         if not tasks:
             await message.answer("No tasks found.")
             return
-        
-        # Check if user is a manager of this team
-        team_member_query = select(TeamMember).where(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == message.from_user.id,
-            TeamMember.role == "Manager"
-        )
-        team_member_result = await session.execute(team_member_query)
-        is_manager = team_member_result.scalar_one_or_none() is not None
         
         # Format tasks
         tasks_text = "📋 Tasks:\n\n"
@@ -452,9 +619,8 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
             
             # Show status update button if:
             # 1. User is a manager (can change any status)
-            # 2. Task is not Done (members can change non-completed tasks)
-            # 3. User is the assignee and task is To Do (members can update their own tasks from To Do)
-            if is_manager or task.status != "Done" or (message.from_user.id == task.assignee_id and task.status == "To Do"):
+            # 2. User is the assignee and task is not Done
+            if is_manager or (message.from_user.id == task.assignee_id and task.status != "Done"):
                 buttons.append(
                     InlineKeyboardButton(
                         text="🔄 In Progress" if task.status == "To Do" else "✅ Done" if task.status == "In Progress" else "📝 To Do",
@@ -462,7 +628,7 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
                     )
                 )
             
-            # Add delete button for managers
+            # Add delete button for managers (always show for managers)
             if is_manager:
                 buttons.append(
                     InlineKeyboardButton(
@@ -499,15 +665,20 @@ async def update_task_status(callback: CallbackQuery, user: User):
         team_member_result = await session.execute(team_member_query)
         is_manager = team_member_result.scalar_one_or_none() is not None
         
-        # Check if user is the assignee or a manager
-        if task.assignee_id != user.id and not is_manager:
-            await callback.message.answer("You can only update your own tasks.")
-            return
-        
-        # Prevent non-managers from changing Done status
-        if task.status == "Done" and not is_manager:
-            await callback.message.answer("Only managers can change the status of completed tasks.")
-            return
+        # For members (non-managers):
+        # 1. Can only update their own tasks
+        # 2. Can only change status up to "Done"
+        # 3. Cannot change status of tasks that are already "Done"
+        if not is_manager:
+            if task.assignee_id != user.id:
+                await callback.message.answer("You can only update your own tasks.")
+                return
+            if task.status == "Done":
+                await callback.message.answer("Only managers can change the status of completed tasks.")
+                return
+            if new_status not in ["In Progress", "Done"]:
+                await callback.message.answer("You can only change task status to 'In Progress' or 'Done'.")
+                return
         
         # Get assignee info for notification
         assignee_query = select(User).where(User.id == task.assignee_id)
@@ -556,9 +727,8 @@ async def update_task_status(callback: CallbackQuery, user: User):
         buttons = []
         # Show status update button if:
         # 1. User is a manager (can change any status)
-        # 2. Task is not Done (members can change non-completed tasks)
-        # 3. User is the assignee and task is To Do (members can update their own tasks from To Do)
-        if is_manager or new_status != "Done" or (user.id == task.assignee_id and new_status == "To Do"):
+        # 2. User is the assignee and task is not Done
+        if is_manager or (user.id == task.assignee_id and new_status != "Done"):
             buttons.append(
                 InlineKeyboardButton(
                     text="🔄 In Progress" if new_status == "To Do" else "✅ Done" if new_status == "In Progress" else "📝 To Do",
@@ -566,6 +736,7 @@ async def update_task_status(callback: CallbackQuery, user: User):
                 )
             )
         
+        # Add delete button for managers (always show for managers)
         if is_manager:
             buttons.append(
                 InlineKeyboardButton(
@@ -605,9 +776,18 @@ async def delete_task(callback: CallbackQuery, user: User):
             await callback.message.answer("Only team managers can delete tasks.")
             return
         
+        # Get assignee info for notification
+        assignee_query = select(User).where(User.id == task.assignee_id)
+        assignee_result = await session.execute(assignee_query)
+        assignee = assignee_result.scalar_one_or_none()
+        
         # Delete the task
         await session.delete(task)
         await session.commit()
+        
+        # Send notification to assignee
+        if assignee and notification_system:
+            await notification_system.notify_task_deleted(task, assignee, user)
         
         # Delete the message
         await callback.message.delete()

@@ -35,7 +35,8 @@ async def main():
         await conn.run_sync(Base.metadata.create_all)
     
     # Start notification system
-    await task.notification_system.start()
+    if task.notification_system:
+        await task.notification_system.start()
     
     # Start polling
     await dp.start_polling(bot)
