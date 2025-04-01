@@ -35,6 +35,7 @@ translations: Dict[str, str] = {
     # Tasks
     "task_created": "Task has been created successfully!",
     "task_assigned": "Task has been assigned to {user}",
+    "new_task_assigned": "📝 New task assigned to you!\n\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\nStatus: To Do",
     "task_completed": "Task has been marked as completed",
     "task_status": "Task status: {status}",
     "not_in_team": "You need to be a member of a team first.",

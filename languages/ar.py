@@ -37,6 +37,7 @@ translations: Dict[str, str] = {
     # Tasks
     "task_created": "تم إنشاء المهمة بنجاح!",
     "task_assigned": "تم تعيين المهمة إلى {user}",
+    "new_task_assigned": "📝 تم تعيين مهمة جديدة لك!\n\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة: قيد الانتظار",
     "task_completed": "تم تحديد المهمة كمكتملة",
     "task_status": "حالة المهمة: {status}",
     "not_in_team": "يجب أن تكون عضواً في فريق أولاً.",

@@ -62,7 +62,7 @@ class Task(Base):
     description = Column(String)
     due_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    status = Column(String, default="pending")  # pending, in_progress, completed
+    status = Column(String, default="pending")  # Values: pending, in_progress, done
     
     # Relationships
     team = relationship("Team", back_populates="tasks")

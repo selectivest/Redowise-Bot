@@ -173,30 +173,10 @@ class NotificationSystem:
         """Send daily morning notification with open tasks"""
         while True:
             try:
-                # Get current time
-                now = datetime.now()
-                target_time = time(8, 0)  # 8:00 AM
-                
-                # Calculate time until next notification
-                if now.time() < target_time:
-                    # If it's before 8 AM, wait until 8 AM
-                    wait_seconds = (
-                        datetime.combine(now.date(), target_time) - now
-                    ).total_seconds()
-                else:
-                    # If it's after 8 AM, wait until 8 AM tomorrow
-                    wait_seconds = (
-                        datetime.combine(now.date(), target_time) + 
-                        timedelta(days=1) - now
-                    ).total_seconds()
-                
-                # Wait until next notification time
-                await asyncio.sleep(wait_seconds)
-                
                 # Get all users with open tasks
                 async with async_session() as session:
-                    # Get all tasks that are not Done
-                    query = select(Task).where(Task.status != "Done")
+                    # Get all tasks that are not done
+                    query = select(Task).where(Task.status != "done")
                     result = await session.execute(query)
                     tasks = result.scalars().all()
                     
@@ -215,20 +195,28 @@ class NotificationSystem:
                         user = user_result.scalar_one_or_none()
                         
                         if user:
+                            # Map status for notification
+                            status_map = {
+                                "pending": "status_pending",
+                                "in_progress": "status_in_progress",
+                                "done": "status_done"
+                            }
+                            
                             # Format tasks list
                             tasks_text = ""
                             for task in user_tasks:
                                 remaining_days = (
                                     task.due_date.date() - datetime.now().date()
-                                ).days
+                                ).days if task.due_date else None
+                                
                                 tasks_text += language_manager.get_text(
                                     "task_item",
                                     user.language_code,
                                     task_id=task.id,
                                     description=task.description,
-                                    due_date=task.due_date.strftime('%d.%m.%Y'),
+                                    due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code),
                                     remaining_days=remaining_days,
-                                    status=task.status
+                                    status=language_manager.get_text(status_map[task.status.lower()], user.language_code)
                                 )
                             
                             # Send daily tasks notification
@@ -238,6 +226,13 @@ class NotificationSystem:
                                 tasks=tasks_text
                             )
                             await self.send_notification(user.telegram_id, message, user.language_code)
+                
+                # Wait until next morning (9 AM)
+                now = datetime.now()
+                next_run = now.replace(hour=9, minute=0, second=0, microsecond=0)
+                if now >= next_run:
+                    next_run = next_run + timedelta(days=1)
+                await asyncio.sleep((next_run - now).total_seconds())
                 
             except asyncio.CancelledError:
                 break

@@ -37,6 +37,7 @@ translations: Dict[str, str] = {
     # Tasks
     "task_created": "وظیفه با موفقیت ایجاد شد!",
     "task_assigned": "وظیفه به {user} اختصاص داده شد",
+    "new_task_assigned": "📝 وظیفه جدید به شما اختصاص داده شد!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: در انتظار",
     "task_completed": "وظیفه به عنوان تکمیل شده علامت‌گذاری شد",
     "task_status": "وضعیت وظیفه: {status}",
     "not_in_team": "شما باید ابتدا عضو یک تیم باشید.",
@@ -74,7 +75,7 @@ translations: Dict[str, str] = {
     "task_deleted": "🗑️ وظیفه حذف شد\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}\nحذف شده توسط: {deleted_by}",
     "due_date_reminder": "⚠️ موعد استحقاق وظیفه فردا است!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}",
     "daily_tasks": "📋 وظایف امروز شما:\n\n{tasks}",
-    "task_item": "🔹 شناسه وظیفه: {task_id}\n\n👤 مسئول: {assignee}\n\n📄 توضیحات: {description}\n\n📅 تاریخ سررسید: {due_date}\n\nوضعیت: {status}\n\n➖➖➖➖➖➖➖➖\n",
+    "task_item": "🔹 شناسه وظیفه:\n{task_id}\n\n👤 مسئول:\n{assignee}\n\n📄 توضیحات:\n{description}\n\n📅 تاریخ سررسید:\n{due_date}\n\nوضعیت:\n{status}\n\n➖➖➖➖➖➖➖➖\n",
     "queued_notifications": "📋 اعلان‌های جدید شما:\n\n{notifications}",
     
     # Errors
@@ -90,10 +91,9 @@ translations: Dict[str, str] = {
     "no_due_date": "بدون تاریخ سررسید",
     "days": "روز",
     "unknown": "ناشناس",
-    "task_item": "🔹 شناسه وظیفه: {task_id}\n👤 مسئول: {assignee}\n📄 توضیحات: {description}\n📅 تاریخ سررسید: {due_date}\nوضعیت: {status}\n➖➖➖➖➖➖➖➖\n",
     
     # Task Status Buttons
-    "status_to_do": "در انتظار",
+    "status_pending": "در انتظار",
     "status_in_progress": "در حال انجام",
     "status_done": "تکمیل شده",
     "delete_task": "🗑️ حذف",
