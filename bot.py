@@ -1,17 +1,31 @@
+import os
+import sys
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher, types
+
+# Add the project root directory to Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.enums import ParseMode
+from dotenv import load_dotenv
+
 from config import Config
-from database.models import Base
-from database.connection import engine
+from database.models import Base, User
+from database.connection import engine, async_session
 from handlers import user, team, task
 from middlewares.auth import AuthMiddleware
+from middlewares.user import UserMiddleware
+from languages.manager import language_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
 
 # Initialize bot and dispatcher
 bot = Bot(token=Config.BOT_TOKEN)
@@ -23,6 +37,8 @@ task.init_notification_system(bot)
 # Register middlewares
 dp.message.middleware(AuthMiddleware())
 dp.callback_query.middleware(AuthMiddleware())
+dp.message.middleware(UserMiddleware())
+dp.callback_query.middleware(UserMiddleware())
 
 # Register routers
 dp.include_router(team.router)

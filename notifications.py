@@ -59,62 +59,116 @@ class NotificationSystem:
 
     async def notify_new_task(self, task: Task, assignee: User):
         """Send notification when a new task is assigned"""
+        # Format due date
+        due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", assignee.language_code)
+        
+        # Map status for notification
+        status_map = {
+            "pending": "status_pending",
+            "in_progress": "status_in_progress",
+            "done": "status_done"
+        }
+        
+        # Get translated status
+        status = language_manager.get_text(status_map[task.status], assignee.language_code)
+        
         message = language_manager.get_text(
             "new_task",
             assignee.language_code,
-            task_id=task.id,
+            task_id=str(task.id),
             description=task.description,
-            due_date=task.due_date.strftime('%d.%m.%Y')
+            due_date=due_date_str,
+            status=status
         )
         await self.send_notification(assignee.telegram_id, message, assignee.language_code)
 
     async def notify_status_change(self, task: Task, assignee: User, manager: User, new_status: str):
         """Send notification when task status changes"""
-        # Notify manager when assignee changes status
-        manager_message = language_manager.get_text(
-            "status_change_manager",
-            manager.language_code,
-            task_id=task.id,
-            assignee_name=f"{assignee.first_name} {assignee.last_name}",
-            description=task.description,
-            due_date=task.due_date.strftime('%d.%m.%Y'),
-            new_status=new_status
-        )
-        await self.send_notification(manager.telegram_id, manager_message, manager.language_code)
-
-        # Notify assignee when manager changes status
-        assignee_message = language_manager.get_text(
-            "status_change_assignee",
-            assignee.language_code,
-            task_id=task.id,
-            description=task.description,
-            due_date=task.due_date.strftime('%d.%m.%Y'),
-            new_status=new_status
-        )
-        await self.send_notification(assignee.telegram_id, assignee_message, assignee.language_code)
+        try:
+            # Map database status to display status
+            status_map = {
+                "pending": "status_pending",
+                "in_progress": "status_in_progress",
+                "done": "status_done"
+            }
+            
+            # Format due date
+            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", assignee.language_code)
+            
+            # Choose notification template based on recipient
+            template = "status_change_manager" if assignee.role == "Manager" else "status_change_assignee"
+            
+            # Get translated status
+            translated_status = language_manager.get_text(status_map[new_status], assignee.language_code)
+            
+            # Format notification text
+            notification_text = language_manager.get_text(
+                template,
+                assignee.language_code,
+                task_id=str(task.id),
+                assignee_name=f"{manager.first_name} {manager.last_name} (@{manager.username})",
+                description=task.description,
+                due_date=due_date_str,
+                new_status=translated_status
+            )
+            
+            await self.send_notification(assignee.telegram_id, notification_text, assignee.language_code)
+        except Exception as e:
+            print(f"Error in notify_status_change: {e}")
 
     async def notify_task_deleted(self, task: Task, assignee: User, deleted_by: User):
         """Send notification when a task is deleted"""
-        message = language_manager.get_text(
-            "task_deleted",
-            assignee.language_code,
-            task_id=task.id,
-            description=task.description,
-            due_date=task.due_date.strftime('%d.%m.%Y'),
-            status=task.status,
-            deleted_by=f"{deleted_by.first_name} {deleted_by.last_name}"
-        )
-        await self.send_notification(assignee.telegram_id, message, assignee.language_code)
+        try:
+            # Map database status to display status
+            status_map = {
+                "pending": "status_pending",
+                "in_progress": "status_in_progress",
+                "done": "status_done"
+            }
+            
+            # Format due date
+            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", assignee.language_code)
+            
+            # Get translated status
+            translated_status = language_manager.get_text(status_map[task.status], assignee.language_code)
+            
+            # Format notification text
+            notification_text = language_manager.get_text(
+                "task_deleted",
+                assignee.language_code,
+                task_id=str(task.id),
+                description=task.description,
+                due_date=due_date_str,
+                status=translated_status,
+                deleted_by=f"{deleted_by.first_name} {deleted_by.last_name} (@{deleted_by.username})"
+            )
+            
+            await self.send_notification(assignee.telegram_id, notification_text, assignee.language_code)
+        except Exception as e:
+            print(f"Error in notify_task_deleted: {e}")
 
     async def notify_due_date_reminder(self, task: Task, assignee: User):
         """Send notification one day before due date"""
+        # Format due date
+        due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", assignee.language_code)
+        
+        # Map status for notification
+        status_map = {
+            "pending": "status_pending",
+            "in_progress": "status_in_progress",
+            "done": "status_done"
+        }
+        
+        # Get translated status
+        translated_status = language_manager.get_text(status_map[task.status], assignee.language_code)
+        
         message = language_manager.get_text(
             "due_date_reminder",
             assignee.language_code,
-            task_id=task.id,
+            task_id=str(task.id),
             description=task.description,
-            due_date=task.due_date.strftime('%d.%m.%Y'),
-            status=task.status
+            due_date=due_date_str,
+            status=translated_status
         )
         await self.send_notification(assignee.telegram_id, message, assignee.language_code)
 
@@ -205,27 +259,63 @@ class NotificationSystem:
                             # Format tasks list
                             tasks_text = ""
                             for task in user_tasks:
-                                remaining_days = (
-                                    task.due_date.date() - datetime.now().date()
-                                ).days if task.due_date else None
-                                
-                                tasks_text += language_manager.get_text(
-                                    "task_item",
-                                    user.language_code,
-                                    task_id=task.id,
-                                    description=task.description,
-                                    due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code),
-                                    remaining_days=remaining_days,
-                                    status=language_manager.get_text(status_map[task.status.lower()], user.language_code)
-                                )
+                                try:
+                                    # Get assignee info for each task
+                                    assignee_query = select(User).where(User.id == task.assignee_id)
+                                    assignee_result = await session.execute(assignee_query)
+                                    task_assignee = assignee_result.scalar_one_or_none()
+                                    
+                                    # Format assignee name
+                                    assignee_name = (
+                                        f"{task_assignee.first_name} {task_assignee.last_name} (@{task_assignee.username})"
+                                        if task_assignee
+                                        else language_manager.get_text("unknown", user.language_code)
+                                    )
+                                    
+                                    # Format due date
+                                    due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code)
+                                    
+                                    # Calculate remaining days
+                                    remaining_days = (
+                                        task.due_date.date() - datetime.now().date()
+                                    ).days if task.due_date else None
+                                    
+                                    if remaining_days is not None:
+                                        due_date_str += f" ({remaining_days} {language_manager.get_text('days', user.language_code)})"
+                                    
+                                    # Get translated status with emoji
+                                    status_emoji = {
+                                        "pending": "📝",
+                                        "in_progress": "🔄",
+                                        "done": "✅"
+                                    }
+                                    current_status_emoji = status_emoji.get(task.status.lower(), "📊")
+                                    translated_status = f"{current_status_emoji} {language_manager.get_text(status_map[task.status.lower()], user.language_code)}"
+                                    
+                                    # Format task text
+                                    task_text = language_manager.get_text(
+                                        "task_item",
+                                        user.language_code,
+                                        task_id=str(task.id),
+                                        assignee=assignee_name,
+                                        description=task.description,
+                                        due_date=due_date_str,
+                                        status=translated_status
+                                    )
+                                    tasks_text += task_text
+                                    
+                                except Exception as e:
+                                    print(f"Error formatting task in daily notification: {e}")
+                                    continue
                             
-                            # Send daily tasks notification
-                            message = language_manager.get_text(
-                                "daily_tasks",
-                                user.language_code,
-                                tasks=tasks_text
-                            )
-                            await self.send_notification(user.telegram_id, message, user.language_code)
+                            if tasks_text:  # Only send if there are tasks to show
+                                # Send daily tasks notification
+                                message = language_manager.get_text(
+                                    "daily_tasks",
+                                    user.language_code,
+                                    tasks=tasks_text
+                                )
+                                await self.send_notification(user.telegram_id, message, user.language_code)
                 
                 # Wait until next morning (9 AM)
                 now = datetime.now()

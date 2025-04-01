@@ -1,6 +1,7 @@
-aiogram==3.3.0
-python-dotenv==1.0.0
-SQLAlchemy==2.0.27
-aiosqlite==0.19.0
+aiogram>=3.0.0
+python-dotenv
+SQLAlchemy>=2.0.0
+aiosqlite
+jdatetime
 pytz==2024.1
 aiogram-calendar==0.6.0 

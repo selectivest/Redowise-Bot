@@ -15,6 +15,7 @@ import calendar as cal
 from typing import Tuple, Optional
 from aiogram.filters.callback_data import CallbackData
 from languages.manager import language_manager
+import jdatetime
 
 router = Router()
 notification_system = None
@@ -161,7 +162,7 @@ class CustomCalendar:
                     elif current_date == today:
                         # Today's date
                         row.append(InlineKeyboardButton(
-                            text="🔵🔵",
+                            text="🔵",
                             callback_data=CustomCalendarCallback(
                                 action="day",
                                 year=year,
@@ -197,7 +198,10 @@ class CustomCalendar:
         if action == "day":
             selected_date = datetime(year, month, day)
             if selected_date.date() < datetime.now().date():
-                await query.answer("❌ Cannot select a past date!", show_alert=True)
+                await query.answer(
+                    language_manager.get_text("past_date_error", query.from_user.language_code),
+                    show_alert=True
+                )
                 return False, None
             await query.message.delete_reply_markup()
             return True, selected_date
@@ -379,8 +383,10 @@ async def process_task_description(message: Message, state: FSMContext, user: Us
 @router.callback_query(TaskStates.waiting_for_task_due_date)
 async def process_deadline_selection(callback: CallbackQuery, state: FSMContext):
     try:
-        deadline_type = callback.data.split('_')[1]
+        deadline_type = callback.data.replace('deadline_', '')  # Remove 'deadline_' prefix
+        print(f"Selected deadline type: {deadline_type}")  # Debug log
         data = await state.get_data()
+        print(f"Current state data: {data}")  # Debug log
         
         if deadline_type == 'custom':
             # Show calendar for custom date selection
@@ -396,81 +402,81 @@ async def process_deadline_selection(callback: CallbackQuery, state: FSMContext)
             # Handle predefined deadlines
             from datetime import datetime, timedelta
             now = datetime.now()
-            
-            if deadline_type == 'tomorrow':
-                due_date = (now + timedelta(days=1)).replace(hour=23, minute=59, second=59)
-            elif deadline_type == 'two_days':
-                due_date = (now + timedelta(days=2)).replace(hour=23, minute=59, second=59)
-            elif deadline_type == 'three_days':
-                due_date = (now + timedelta(days=3)).replace(hour=23, minute=59, second=59)
-            elif deadline_type == 'five_days':
-                due_date = (now + timedelta(days=5)).replace(hour=23, minute=59, second=59)
-            elif deadline_type == 'one_week':
-                due_date = (now + timedelta(days=7)).replace(hour=23, minute=59, second=59)
-            else:
-                raise ValueError(f"Invalid deadline type: {deadline_type}")
-            
-            await state.update_data(due_date=due_date)
+            print(f"Current time: {now}")  # Debug log
             
             try:
-                # Create task first
-                async with async_session() as session:
-                    # Create the task
-                    task = Task(
-                        team_id=data['team_id'],
-                        assignee_id=data['assignee_id'],
-                        description=data['description'],
-                        due_date=due_date,
-                        status="pending",  # Use lowercase status
-                        creator_id=callback.from_user.id
-                    )
-                    session.add(task)
-                    await session.commit()
-                    
-                    # Get assignee info for notification
-                    assignee_query = select(User).where(User.id == data['assignee_id'])
-                    assignee_result = await session.execute(assignee_query)
-                    assignee = assignee_result.scalar_one_or_none()
-                    
-                    if assignee:
-                        try:
-                            # Map status for notification
-                            status_map = {
-                                "pending": "status_pending",
-                                "in_progress": "status_in_progress",
-                                "done": "status_done"
-                            }
-                            
-                            await callback.message.bot.send_message(
-                                chat_id=assignee.telegram_id,
-                                text=language_manager.get_text(
-                                    "new_task_assigned",
-                                    assignee.language_code,
-                                    task_id=task.id,
-                                    description=data['description'],
-                                    due_date=due_date.strftime('%d.%m.%Y'),
-                                    status=language_manager.get_text(status_map["pending"], assignee.language_code)
-                                )
-                            )
-                        except Exception as e:
-                            print(f"Error sending notification to assignee: {e}")
-                    
-                    # Send success message
+                # Map deadline types to days
+                deadline_map = {
+                    'tomorrow': 1,
+                    'two_days': 2,
+                    'three_days': 3,
+                    'five_days': 5,
+                    'one_week': 7
+                }
+                
+                if deadline_type not in deadline_map:
+                    print(f"Invalid deadline type received: {deadline_type}")  # Debug log
+                    raise ValueError(f"Invalid deadline type: {deadline_type}")
+                
+                # Calculate due date based on the deadline type
+                days_to_add = deadline_map[deadline_type]
+                due_date = (now + timedelta(days=days_to_add)).replace(hour=23, minute=59, second=59)
+                
+                print(f"Calculated due date: {due_date}")  # Debug log
+                
+                await state.update_data(due_date=due_date)
+                
+                try:
+                    # Create task first
+                    async with async_session() as session:
+                        # Create the task
+                        task = Task(
+                            team_id=data['team_id'],
+                            assignee_id=data['assignee_id'],
+                            description=data['description'],
+                            due_date=due_date,
+                            status="pending",  # Use lowercase status
+                            creator_id=callback.from_user.id
+                        )
+                        session.add(task)
+                        await session.commit()
+                        
+                        # Get assignee info for notification
+                        assignee_query = select(User).where(User.id == data['assignee_id'])
+                        assignee_result = await session.execute(assignee_query)
+                        assignee = assignee_result.scalar_one_or_none()
+                        
+                        if assignee and notification_system:
+                            await notification_system.notify_new_task(task, assignee)
+                        
+                        # Send success message in user's language
+                        await callback.message.answer(
+                            language_manager.get_text("task_created", callback.from_user.language_code)
+                        )
+                        
+                        # Remove the keyboard after successful task creation
+                        await callback.message.delete_reply_markup()
+                        
+                except Exception as e:
+                    print(f"Error creating task in database: {e}")
                     await callback.message.answer(
-                        language_manager.get_text("task_created", callback.from_user.language_code)
+                        language_manager.get_text("error_occurred", callback.from_user.language_code) +
+                        "\n" + language_manager.get_text("database_error", callback.from_user.language_code)
                     )
-                    
+                finally:
+                    await state.clear()
+            
             except Exception as e:
-                print(f"Error creating task in database: {e}")
+                print(f"Error in deadline selection: {e}")
                 await callback.message.answer(
-                    language_manager.get_text("error_occurred", callback.from_user.language_code) +
-                    "\nDatabase error. Please try again."
+                    language_manager.get_text("error_occurred", callback.from_user.language_code)
                 )
-            finally:
                 await state.clear()
+            finally:
+                await callback.answer()
         
-        await callback.answer()
     except Exception as e:
+        print(f"Error in deadline selection: {e}")
         await callback.message.answer(
             language_manager.get_text("error_occurred", callback.from_user.language_code)
         )
@@ -566,18 +572,8 @@ async def process_calendar_selection(callback: CallbackQuery, state: FSMContext)
                     assignee_result = await session.execute(assignee_query)
                     assignee = assignee_result.scalar_one_or_none()
                     
-                    if assignee:
-                        try:
-                            await callback.message.bot.send_message(
-                                chat_id=assignee.telegram_id,
-                                text=language_manager.get_text(
-                                    "new_task_assigned",
-                                    assignee.language_code,
-                                    description=final_data['description']
-                                )
-                            )
-                        except Exception as e:
-                            print(f"Error sending notification to assignee: {e}")
+                    if assignee and notification_system:
+                        await notification_system.notify_new_task(task, assignee)
                     
                     # Send success message
                     await callback.message.answer(
@@ -679,19 +675,8 @@ async def create_task(message: Message, state: FSMContext, language_code: str):
                 result = await session.execute(query)
                 assignee = result.scalar_one_or_none()
                 
-                if assignee:
-                    # Send notification to assignee
-                    try:
-                        await message.bot.send_message(
-                            chat_id=assignee.telegram_id,
-                            text=language_manager.get_text(
-                                "new_task_assigned",
-                                assignee.language_code,
-                                description=data['description']
-                            )
-                        )
-                    except Exception as e:
-                        print(f"Error sending notification to assignee: {e}")
+                if assignee and notification_system:
+                    await notification_system.notify_new_task(task, assignee)
                 
                 # Send success message
                 await message.answer(
@@ -842,10 +827,17 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
             )
             return
         
-        tasks_text = language_manager.get_text("tasks_header", user.language_code) + "\n\n"
+        # Send header first
+        await callback.message.answer(
+            language_manager.get_text("tasks_header", user.language_code)
+        )
+        
+        # Process each task
         for task in tasks:
             remaining_days = get_remaining_days(task.due_date) if task.due_date else None
-            due_date_str = f"{task.due_date.strftime('%d.%m.%Y')} ({remaining_days} {language_manager.get_text('days', user.language_code)})" if task.due_date else language_manager.get_text("no_due_date", user.language_code)
+            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code)
+            if remaining_days is not None:
+                due_date_str += f" ({remaining_days} {language_manager.get_text('days', user.language_code)})"
             
             # Map database status to display status
             status_map = {
@@ -866,10 +858,11 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
             assignee = assignee_result.scalar_one_or_none()
             assignee_name = f"{assignee.first_name} {assignee.last_name} (@{assignee.username})" if assignee else language_manager.get_text("unknown", user.language_code)
             
+            # Format task text with proper translations
             task_text = language_manager.get_text(
                 "task_item",
                 user.language_code,
-                task_id=task.id,
+                task_id=str(task.id),
                 assignee=assignee_name,
                 description=task.description,
                 due_date=due_date_str,
@@ -936,11 +929,17 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
             )
             return
         
-        # Format tasks
-        tasks_text = language_manager.get_text("tasks_header", message.from_user.language_code) + "\n\n"
+        # Send header first
+        await message.answer(
+            language_manager.get_text("tasks_header", message.from_user.language_code)
+        )
+        
+        # Process each task
         for task in tasks:
             remaining_days = get_remaining_days(task.due_date) if task.due_date else None
-            due_date_str = f"{task.due_date.strftime('%d.%m.%Y')} ({remaining_days} {language_manager.get_text('days', message.from_user.language_code)})" if task.due_date else language_manager.get_text("no_due_date", message.from_user.language_code)
+            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", message.from_user.language_code)
+            if remaining_days is not None:
+                due_date_str += f" ({remaining_days} {language_manager.get_text('days', message.from_user.language_code)})"
             
             # Map database status to display status
             status_map = {
@@ -961,10 +960,11 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
             assignee = assignee_result.scalar_one_or_none()
             assignee_name = f"{assignee.first_name} {assignee.last_name} (@{assignee.username})" if assignee else language_manager.get_text("unknown", message.from_user.language_code)
             
+            # Format task text with proper translations
             task_text = language_manager.get_text(
                 "task_item",
                 message.from_user.language_code,
-                task_id=task.id,
+                task_id=str(task.id),
                 assignee=assignee_name,
                 description=task.description,
                 due_date=due_date_str,
@@ -1010,138 +1010,154 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
 
 @router.callback_query(F.data.startswith("update_status_"))
 async def update_task_status(callback: CallbackQuery, user: User):
-    _, _, task_id, new_status = callback.data.split('_')
-    task_id = int(task_id)
-    
-    async with async_session() as session:
-        # Get the task
-        query = select(Task).where(Task.id == task_id)
-        result = await session.execute(query)
-        task = result.scalar_one_or_none()
+    try:
+        # Fix callback data parsing to handle status with underscores
+        data_parts = callback.data.split('_', 3)  # Split only first 3 underscores
+        task_id = int(data_parts[2])
+        new_status = data_parts[3]  # This will keep "in_progress" intact
         
-        if not task:
-            await callback.message.answer(
-                language_manager.get_text("task_not_found", user.language_code)
+        async with async_session() as session:
+            # Get the task
+            query = select(Task).where(Task.id == task_id)
+            result = await session.execute(query)
+            task = result.scalar_one_or_none()
+            
+            if not task:
+                await callback.message.answer(
+                    language_manager.get_text("task_not_found", user.language_code)
+                )
+                return
+            
+            # Check if user is a manager of the team
+            team_member_query = select(TeamMember).where(
+                TeamMember.team_id == task.team_id,
+                TeamMember.user_id == user.id,
+                TeamMember.role == "Manager"
             )
-            return
-        
-        # Check if user is a manager of the team
-        team_member_query = select(TeamMember).where(
-            TeamMember.team_id == task.team_id,
-            TeamMember.user_id == user.id,
-            TeamMember.role == "Manager"
-        )
-        team_member_result = await session.execute(team_member_query)
-        is_manager = team_member_result.scalar_one_or_none() is not None
-        
-        # For members (non-managers):
-        # 1. Can only update their own tasks
-        # 2. Can only change status up to "done"
-        # 3. Cannot change status of tasks that are already "done"
-        if not is_manager:
-            if task.assignee_id != user.id:
-                await callback.message.answer(
-                    language_manager.get_text("update_own_tasks", user.language_code)
-                )
-                return
-            if task.status.lower() == "done":
-                await callback.message.answer(
-                    language_manager.get_text("completed_tasks_locked", user.language_code)
-                )
-                return
-            if new_status not in ["in_progress", "done"]:
-                await callback.message.answer(
-                    language_manager.get_text("status_limit", user.language_code)
-                )
-                return
-        
-        # Get assignee info for notification
-        assignee_query = select(User).where(User.id == task.assignee_id)
-        assignee_result = await session.execute(assignee_query)
-        assignee = assignee_result.scalar_one_or_none()
-        
-        # Get manager info for notification
-        manager_query = select(User).join(TeamMember).where(
-            TeamMember.team_id == task.team_id,
-            TeamMember.role == "Manager"
-        )
-        manager_result = await session.execute(manager_query)
-        manager = manager_result.scalar_one_or_none()
-        
-        # Update task status
-        task.status = new_status
-        await session.commit()
-        
-        # Send notifications based on who made the change
-        if notification_system:
-            if is_manager and assignee:
-                # If manager changed status, notify assignee
-                await notification_system.notify_status_change(task, assignee, user, new_status)
-            elif not is_manager and manager:
-                # If assignee changed status, notify manager
-                await notification_system.notify_status_change(task, user, manager, new_status)
-        
-        # Map database status to display status
-        status_map = {
-            "pending": "status_pending",
-            "in_progress": "status_in_progress",
-            "done": "status_done"
-        }
-        
-        status_emoji = {
-            "pending": "📝",
-            "in_progress": "🔄",
-            "done": "✅"
-        }.get(new_status.lower(), "📊")
-        
-        remaining_days = get_remaining_days(task.due_date) if task.due_date else None
-        due_date_str = f"{task.due_date.strftime('%d.%m.%Y')} ({remaining_days} {language_manager.get_text('days', user.language_code)})" if task.due_date else language_manager.get_text("no_due_date", user.language_code)
-        
-        tasks_text = language_manager.get_text(
-            "task_item",
-            user.language_code,
-            task_id=task.id,
-            assignee=f"{assignee.first_name} {assignee.last_name} (@{assignee.username})",
-            description=task.description,
-            due_date=due_date_str,
-            status=f"{status_emoji} {language_manager.get_text(status_map[new_status.lower()], user.language_code)}"
-        )
-        
-        # Create new keyboard
-        buttons = []
-        # Show status update button if:
-        # 1. User is a manager (can change any status)
-        # 2. User is the assignee and task is not done
-        if is_manager or (user.id == task.assignee_id and new_status.lower() != "done"):
-            # Map current status to next status
-            status_flow = {
-                "pending": "in_progress",
-                "in_progress": "done",
-                "done": "pending"
+            team_member_result = await session.execute(team_member_query)
+            is_manager = team_member_result.scalar_one_or_none() is not None
+            
+            # For members (non-managers):
+            # 1. Can only update their own tasks
+            # 2. Can only change status up to "done"
+            # 3. Cannot change status of tasks that are already "done"
+            if not is_manager:
+                if task.assignee_id != user.id:
+                    await callback.message.answer(
+                        language_manager.get_text("update_own_tasks", user.language_code)
+                    )
+                    return
+                if task.status.lower() == "done":
+                    await callback.message.answer(
+                        language_manager.get_text("completed_tasks_locked", user.language_code)
+                    )
+                    return
+                if new_status not in ["in_progress", "done"]:
+                    await callback.message.answer(
+                        language_manager.get_text("status_limit", user.language_code)
+                    )
+                    return
+            
+            # Get assignee info for notification
+            assignee_query = select(User).where(User.id == task.assignee_id)
+            assignee_result = await session.execute(assignee_query)
+            assignee = assignee_result.scalar_one_or_none()
+            
+            # Get manager info for notification
+            manager_query = select(User).join(TeamMember).where(
+                TeamMember.team_id == task.team_id,
+                TeamMember.role == "Manager"
+            )
+            manager_result = await session.execute(manager_query)
+            manager = manager_result.scalar_one_or_none()
+            
+            # Update task status
+            task.status = new_status
+            await session.commit()
+            
+            # Send notifications based on who made the change
+            if notification_system:
+                if is_manager and assignee:
+                    # If manager changed status, notify assignee
+                    await notification_system.notify_status_change(task, assignee, user, new_status)
+                elif not is_manager and manager:
+                    # If assignee changed status, notify manager
+                    await notification_system.notify_status_change(task, user, manager, new_status)
+            
+            # Map database status to display status
+            status_map = {
+                "pending": "status_pending",
+                "in_progress": "status_in_progress",
+                "done": "status_done"
             }
-            next_status = status_flow[new_status.lower()]
-            button_text = language_manager.get_text(
-                status_map[next_status],
-                user.language_code
+            
+            status_emoji = {
+                "pending": "📝",
+                "in_progress": "🔄",
+                "done": "✅"
+            }
+            
+            # Get the emoji for the current status
+            current_status_emoji = status_emoji.get(new_status, "📊")
+            
+            remaining_days = get_remaining_days(task.due_date) if task.due_date else None
+            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code)
+            if remaining_days is not None:
+                due_date_str += f" ({remaining_days} {language_manager.get_text('days', user.language_code)})"
+            
+            # Format task text with proper translations
+            tasks_text = language_manager.get_text(
+                "task_item",
+                user.language_code,
+                task_id=str(task.id),
+                assignee=f"{assignee.first_name} {assignee.last_name} (@{assignee.username})" if assignee else language_manager.get_text("unknown", user.language_code),
+                description=task.description,
+                due_date=due_date_str,
+                status=f"{current_status_emoji} {language_manager.get_text(status_map[new_status], user.language_code)}"
             )
-            buttons.append(
-                InlineKeyboardButton(
-                    text=f"{status_emoji} {button_text}",
-                    callback_data=f"update_status_{task.id}_{next_status}"
+            
+            # Create new keyboard
+            buttons = []
+            # Show status update button if:
+            # 1. User is a manager (can change any status)
+            # 2. User is the assignee and task is not done
+            if is_manager or (user.id == task.assignee_id and new_status != "done"):
+                # Map current status to next status
+                status_flow = {
+                    "pending": "in_progress",
+                    "in_progress": "done",
+                    "done": "pending"
+                }
+                next_status = status_flow[new_status]
+                next_status_emoji = status_emoji[next_status]
+                button_text = language_manager.get_text(
+                    status_map[next_status],
+                    user.language_code
                 )
-            )
-        
-        # Add delete button for managers (always show for managers)
-        if is_manager:
-            buttons.append(
-                InlineKeyboardButton(
-                    text=language_manager.get_text("delete_task", user.language_code),
-                    callback_data=f"delete_task_{task.id}"
+                buttons.append(
+                    InlineKeyboardButton(
+                        text=f"{next_status_emoji} {button_text}",
+                        callback_data=f"update_status_{task.id}_{next_status}"
+                    )
                 )
-            )
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
-        await callback.message.edit_text(tasks_text, reply_markup=keyboard)
+            
+            # Add delete button for managers (always show for managers)
+            if is_manager:
+                buttons.append(
+                    InlineKeyboardButton(
+                        text=language_manager.get_text("delete_task", user.language_code),
+                        callback_data=f"delete_task_{task.id}"
+                    )
+                )
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+            await callback.message.edit_text(tasks_text, reply_markup=keyboard)
+            await callback.answer()
+    except Exception as e:
+        print(f"Error in update_task_status: {e}")
+        await callback.message.answer(
+            language_manager.get_text("error_occurred", user.language_code)
+        )
         await callback.answer()
 
 @router.callback_query(F.data.startswith("delete_task_"))
