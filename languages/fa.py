@@ -49,7 +49,7 @@ translations: Dict[str, str] = {
     "three_days": "۳ روز دیگر",
     "five_days": "۵ روز دیگر",
     "one_week": "یک هفته دیگر",
-    "custom_date": "�� انتخاب تاریخ",
+    "custom_date": "انتخاب تاریخ",
     "missing_fields": "خطا: اطلاعات مورد نیاز ناقص است: {fields}",
     "no_tasks": "هیچ وظیفه‌ای یافت نشد.",
     "no_members": "هیچ عضوی در این تیم یافت نشد.",
@@ -74,7 +74,7 @@ translations: Dict[str, str] = {
     "task_deleted": "🗑️ وظیفه حذف شد\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}\nحذف شده توسط: {deleted_by}",
     "due_date_reminder": "⚠️ موعد استحقاق وظیفه فردا است!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}",
     "daily_tasks": "📋 وظایف امروز شما:\n\n{tasks}",
-    "task_item": "🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}({remaining_days} روز)\nوضعیت: {status}\n➖➖➖➖➖➖➖➖\n",
+    "task_item": "🔹 شناسه وظیفه: {task_id}\n\n👤 مسئول: {assignee}\n\n📄 توضیحات: {description}\n\n📅 تاریخ سررسید: {due_date}\n\nوضعیت: {status}\n\n➖➖➖➖➖➖➖➖\n",
     "queued_notifications": "📋 اعلان‌های جدید شما:\n\n{notifications}",
     
     # Errors

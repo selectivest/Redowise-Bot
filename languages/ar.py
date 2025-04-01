@@ -74,7 +74,7 @@ translations: Dict[str, str] = {
     "task_deleted": "🗑️ تم حذف المهمة\n\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة: {status}\nتم الحذف بواسطة: {deleted_by}",
     "due_date_reminder": "⚠️ موعد استحقاق المهمة غداً!\n\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة: {status}",
     "daily_tasks": "📋 مهامك اليوم:\n\n{tasks}",
-    "task_item": "🔹 معرف المهمة: {task_id}\n👤 المسؤول: {assignee}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة: {status}\n➖➖➖➖➖➖➖➖\n",
+    "task_item": "🔹 معرف المهمة: {task_id}\n\n👤 المسؤول: {assignee}\n\n📄 الوصف: {description}\n\n📅 تاريخ الاستحقاق: {due_date}\n\nالحالة: {status}\n\n➖➖➖➖➖➖➖➖\n",
     "queued_notifications": "📋 إشعاراتك الجديدة:\n\n{notifications}",
     
     # Errors

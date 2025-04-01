@@ -72,7 +72,7 @@ translations: Dict[str, str] = {
     "task_deleted": "🗑️ Task deleted\n\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\nStatus: {status}\nDeleted by: {deleted_by}",
     "due_date_reminder": "⚠️ Task due tomorrow!\n\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\nStatus: {status}",
     "daily_tasks": "📋 Your tasks for today:\n\n{tasks}",
-    "task_item": "🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}({remaining_days} days)\nStatus: {status}\n➖➖➖➖➖➖➖➖\n",
+    "task_item": "🔹 Task ID: {task_id}\n\n👤 Assignee: {assignee}\n\n📄 Description: {description}\n\n📅 Due Date: {due_date}\n\nSTATUS: {status}\n\n➖➖➖➖➖➖➖➖\n",
     "queued_notifications": "📋 Your new notifications:\n\n{notifications}",
     
     # Errors
@@ -88,7 +88,6 @@ translations: Dict[str, str] = {
     "no_due_date": "No due date",
     "days": "days",
     "unknown": "Unknown",
-    "task_item": "🔹 Task ID: {task_id}\n👤 Assignee: {assignee}\n📄 Description: {description}\n📅 Due Date: {due_date}\nSTATUS: {status}\n➖➖➖➖➖➖➖➖\n",
     
     # Task Status Buttons
     "status_to_do": "To Do",
