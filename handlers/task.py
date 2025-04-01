@@ -486,12 +486,13 @@ async def view_member_tasks(callback: CallbackQuery, user: User):
         result = await session.execute(query)
         is_manager = result.scalar_one_or_none() is not None
         
-        if not is_manager:
-            await callback.message.answer("Only managers can view other members' tasks.")
+        # Allow members to view their own tasks
+        if not is_manager and user.id != member_id:
+            await callback.message.answer("You can only view your own tasks.")
             return
     
     # Pass is_manager=True to show_tasks for managers
-    await show_tasks(callback.message, team_id, member_id, user.role, is_manager=True)
+    await show_tasks(callback.message, team_id, member_id, user.role, is_manager=is_manager)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("view_all_tasks_"))
@@ -548,7 +549,7 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
             # Show status update button if:
             # 1. User is a manager (can change any status)
             # 2. User is the assignee and task is not Done
-            if is_manager or (callback.from_user.id == task.assignee_id and task.status != "Done"):
+            if is_manager or (user.id == task.assignee_id and task.status != "Done"):
                 buttons.append(
                     InlineKeyboardButton(
                         text="🔄 In Progress" if task.status == "To Do" else "✅ Done" if task.status == "In Progress" else "📝 To Do",
@@ -620,7 +621,7 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
             # Show status update button if:
             # 1. User is a manager (can change any status)
             # 2. User is the assignee and task is not Done
-            if is_manager or (message.from_user.id == task.assignee_id and task.status != "Done"):
+            if is_manager or (task.assignee_id == member_id and task.status != "Done"):
                 buttons.append(
                     InlineKeyboardButton(
                         text="🔄 In Progress" if task.status == "To Do" else "✅ Done" if task.status == "In Progress" else "📝 To Do",
