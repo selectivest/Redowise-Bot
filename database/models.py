@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum, UniqueConstraint
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 import enum
@@ -18,6 +18,7 @@ class User(Base):
     last_name = Column(String)
     username = Column(String, unique=True)
     role = Column(Enum(UserRole), default=UserRole.MEMBER)
+    language_code = Column(String, default='en')  # Default language is English
     
     # Relationships
     teams = relationship("TeamMember", back_populates="user")
@@ -39,13 +40,17 @@ class TeamMember(Base):
     __tablename__ = 'team_members'
     
     id = Column(Integer, primary_key=True)
-    team_id = Column(Integer, ForeignKey('teams.id'))
-    user_id = Column(Integer, ForeignKey('users.id'))
-    role = Column(String)  # e.g., "Developer", "Designer"
+    team_id = Column(Integer, ForeignKey('teams.id', ondelete='CASCADE'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
+    role = Column(String, nullable=False)  # e.g., "Manager", "Member"
     
     # Relationships
     team = relationship("Team", back_populates="members")
     user = relationship("User", back_populates="teams")
+    
+    __table_args__ = (
+        UniqueConstraint('team_id', 'user_id', name='uix_team_user'),
+    )
 
 class Task(Base):
     __tablename__ = 'tasks'

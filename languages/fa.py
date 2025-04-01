@@ -1,0 +1,119 @@
+from typing import Dict
+
+translations: Dict[str, str] = {
+    # General
+    "welcome": "👋 به ربات مدیریت وظایف خوش آمدید!\n\nمن اینجا هستم تا به شما در مدیریت کارآمد وظایف و تیم‌ها کمک کنم.\n\nکارهایی که می‌توانید انجام دهید:\n1️⃣ ایجاد و مدیریت تیم‌ها\n2️⃣ تعیین و پیگیری وظایف\n3️⃣ همکاری با اعضای تیم\n\nاز /menu برای مشاهده منوی اصلی یا /help برای دستورالعمل‌های دقیق استفاده کنید.\nاز /show_keyboard برای نمایش منوی صفحه کلید استفاده کنید.",
+    "select_language": "لطفاً زبان مورد نظر خود را انتخاب کنید:",
+    "language_changed": "زبان به فارسی تغییر کرد",
+    "main_menu": "🎯 منوی اصلی\n\nگزینه مورد نظر را انتخاب کنید:",
+    
+    # Menu
+    "create_team": "ایجاد تیم",
+    "join_team": "پیوستن به تیم",
+    "my_tasks": "وظایف من",
+    "settings": "تنظیمات",
+    
+    # Team
+    "team_created": "تیم با موفقیت ایجاد شد! شما اکنون مدیر این تیم هستید.",
+    "team_name_prompt": "لطفاً نام تیم جدید را وارد کنید:",
+    "invalid_team_name": "نام تیم نمی‌تواند خالی باشد. لطفاً نام معتبری وارد کنید.",
+    "team_name_exists": "تیمی با این نام قبلاً وجود دارد. لطفاً نام دیگری انتخاب کنید.",
+    "team_join_code": "کد پیوستن به تیم: {code}",
+    "team_joined": "✅ شما به تیم '{team_name}' پیوستید!\n\nمدیر: @{manager_username}",
+    "member_username_prompt": "لطفاً نام کاربری تلگرام عضو جدید را وارد کنید:",
+    "select_team": "تیمی را که می‌خواهید عضو را به آن اضافه کنید انتخاب کنید:",
+    "user_not_found": "کاربر پیدا نشد. لطفاً مطمئن شوید که ابتدا در ربات ثبت‌نام کرده باشد.",
+    "user_not_started_bot": "خطا: @{username} هنوز ربات را شروع نکرده است. لطفاً از او بخواهید ابتدا با دستور /start ربات را شروع کند.",
+    "team_invitation": "👋 شما به تیم '{team_name}' دعوت شده‌اید!\n\nمدیر: @{manager_username}\n\nآیا می‌خواهید دعوت را بپذیرید؟",
+    "invitation_sent": "دعوت‌نامه برای @{username} ارسال شد",
+    "invitation_send_error": "خطا: امکان ارسال دعوت‌نامه به @{username} وجود ندارد. لطفاً مطمئن شوید که ربات را شروع کرده باشد و دوباره تلاش کنید.",
+    "invalid_invitation": "دعوت‌نامه نامعتبر یا منقضی شده است.",
+    "member_accepted": "✅ @{username} دعوت پیوستن به تیم '{team_name}' را پذیرفت!",
+    "member_declined": "❌ @{username} دعوت پیوستن به تیم '{team_name}' را رد کرد.",
+    "invitation_declined": "❌ شما دعوت پیوستن به تیم '{team_name}' را رد کردید.",
+    "accept": "✅ پذیرفتن",
+    "reject": "❌ رد کردن",
+    
+    # Tasks
+    "task_created": "وظیفه با موفقیت ایجاد شد!",
+    "task_assigned": "وظیفه به {user} اختصاص داده شد",
+    "task_completed": "وظیفه به عنوان تکمیل شده علامت‌گذاری شد",
+    "task_status": "وضعیت وظیفه: {status}",
+    "not_in_team": "شما باید ابتدا عضو یک تیم باشید.",
+    "select_team_view": "تیمی را برای مشاهده وظایف انتخاب کنید:",
+    "select_member": "عضو تیم را برای اختصاص وظیفه انتخاب کنید:",
+    "enter_task_description": "لطفاً توضیحات وظیفه را وارد کنید:",
+    "select_due_date": "تاریخ موعد وظیفه را انتخاب کنید:",
+    "tomorrow": "فردا",
+    "two_days": "۲ روز دیگر",
+    "three_days": "۳ روز دیگر",
+    "five_days": "۵ روز دیگر",
+    "one_week": "یک هفته دیگر",
+    "custom_date": "�� انتخاب تاریخ",
+    "missing_fields": "خطا: اطلاعات مورد نیاز ناقص است: {fields}",
+    "no_tasks": "هیچ وظیفه‌ای یافت نشد.",
+    "no_members": "هیچ عضوی در این تیم یافت نشد.",
+    "select_member_view": "عضو تیم را برای مشاهده وظایف انتخاب کنید:",
+    "all_members": "👥 همه اعضا",
+    "own_tasks_only": "شما فقط می‌توانید وظایف خود را مشاهده کنید.",
+    "update_own_tasks": "شما فقط می‌توانید وظایف خود را به‌روزرسانی کنید.",
+    "completed_tasks_locked": "فقط مدیران می‌توانند وضعیت وظایف تکمیل شده را تغییر دهند.",
+    "status_limit": "شما فقط می‌توانید وضعیت وظیفه را به 'در حال انجام' یا 'تکمیل شده' تغییر دهید.",
+    "task_not_found": "وظیفه یافت نشد.",
+    "error_occurred": "خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+    
+    # Status
+    "status_pending": "در انتظار",
+    "status_in_progress": "در حال انجام",
+    "status_completed": "تکمیل شده",
+    
+    # Notifications
+    "new_task": "📝 وظیفه جدید تعیین شد!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: در انتظار",
+    "status_change_manager": "🔄 وضعیت وظیفه به‌روزرسانی شد!\n\n🔹 شناسه وظیفه: {task_id}\n👤 مسئول: {assignee_name}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت جدید: {new_status}",
+    "status_change_assignee": "🔄 وضعیت وظیفه شما به‌روزرسانی شد!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت جدید: {new_status}",
+    "task_deleted": "🗑️ وظیفه حذف شد\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}\nحذف شده توسط: {deleted_by}",
+    "due_date_reminder": "⚠️ موعد استحقاق وظیفه فردا است!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}",
+    "daily_tasks": "📋 وظایف امروز شما:\n\n{tasks}",
+    "task_item": "🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}({remaining_days} روز)\nوضعیت: {status}\n➖➖➖➖➖➖➖➖\n",
+    "queued_notifications": "📋 اعلان‌های جدید شما:\n\n{notifications}",
+    
+    # Errors
+    "error_occurred": "خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+    "invalid_input": "ورودی نامعتبر است. لطفاً دوباره تلاش کنید.",
+    "not_authorized": "شما باید مدیر یک تیم باشید تا بتوانید عضو جدید اضافه کنید. ابتدا با استفاده از دستور /create_team یک تیم ایجاد کنید.",
+    
+    # Calendar
+    "calendar_instructions": "لطفاً تاریخ مورد نظر را از تقویم انتخاب کنید:",
+    
+    # Tasks List
+    "tasks_header": "📋 وظایف:",
+    "no_due_date": "بدون تاریخ سررسید",
+    "days": "روز",
+    "unknown": "ناشناس",
+    "task_item": "🔹 شناسه وظیفه: {task_id}\n👤 مسئول: {assignee}\n📄 توضیحات: {description}\n📅 تاریخ سررسید: {due_date}\nوضعیت: {status}\n➖➖➖➖➖➖➖➖\n",
+    
+    # Task Status Buttons
+    "status_to_do": "در انتظار",
+    "status_in_progress": "در حال انجام",
+    "status_done": "تکمیل شده",
+    "delete_task": "🗑️ حذف",
+    
+    # Task Management Messages
+    "managers_only_delete": "فقط مدیران تیم می‌توانند وظایف را حذف کنند.",
+    "task_deleted_success": "وظیفه با موفقیت حذف شد!",
+    "update_own_tasks": "شما فقط می‌توانید وظایف خود را به‌روزرسانی کنید.",
+    "completed_tasks_locked": "فقط مدیران می‌توانند وضعیت وظایف تکمیل شده را تغییر دهند.",
+    "status_limit": "شما فقط می‌توانید وضعیت وظیفه را به 'در حال انجام' یا 'تکمیل شده' تغییر دهید.",
+    
+    # Menu Items
+    "add_task": "📝 افزودن وظیفه",
+    "view_tasks": "📋 مشاهده وظایف",
+    "add_member": "👥 افزودن عضو",
+    "select_option": "گزینه مورد نظر را انتخاب کنید",
+    
+    # Management Messages
+    "teams_management": "👥 *مدیریت تیم‌ها*\n\n• /create_team - ایجاد تیم جدید\n• /add_member - افزودن عضو به تیم\n\nنکته: ویژگی‌های مدیریت تیم فقط برای مدیران در دسترس است.",
+    "tasks_management": "📝 *مدیریت وظایف*\n\n• /add_task - ایجاد وظیفه جدید\n• /tasks - مشاهده وظایف شما\n\nوظایف می‌توانند به اعضای تیم اختصاص داده شوند و پیگیری شوند.",
+    "about_bot": "ℹ️ *درباره ربات مدیریت وظایف*\n\nابزاری قدرتمند برای مدیریت وظایف و تیم‌ها در تلگرام.\n\n{features}",
+    "bot_features": "ویژگی‌ها:\n• مدیریت تیم\n• اختصاص وظایف\n• پیگیری پیشرفت\n• دسترسی مبتنی بر نقش\n\nاز /help برای دستورالعمل‌های دقیق استفاده کنید.",
+} 

@@ -2,11 +2,13 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, BotCommand, BotCommandScopeDefault, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
-from database.models import User, UserRole, Team, TeamMember
+from aiogram.fsm.state import State, StatesGroup
+from database.models import User, UserRole, Team, TeamMember, Task
 from database.connection import async_session
 from sqlalchemy import select
 from handlers.team import TeamStates
-from handlers.task import TaskStates
+from handlers.task import process_task_description, TaskStates
+from languages.manager import language_manager
 
 router = Router()
 
@@ -16,27 +18,36 @@ async def set_commands(bot):
         BotCommand(command="help", description="Show detailed help information"),
         BotCommand(command="menu", description="Show main menu"),
         BotCommand(command="show_keyboard", description="Show keyboard menu"),
-        BotCommand(command="hide_keyboard", description="Hide keyboard menu")
+        BotCommand(command="hide_keyboard", description="Hide keyboard menu"),
+        BotCommand(command="language", description="Change language")
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
 
 def get_keyboard_menu(user: User = None) -> ReplyKeyboardMarkup:
     """Create keyboard menu based on user role"""
+    if not user:
+        return ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Loading...")]],
+            resize_keyboard=True
+        )
+    
     buttons = [
-        [KeyboardButton(text="📝 Add Task"), KeyboardButton(text="👥 Add Member")],
-        [KeyboardButton(text="➕ Create Team"), KeyboardButton(text="📋 Tasks")]
+        [KeyboardButton(text=language_manager.get_text("add_task", user.language_code))],
+        [KeyboardButton(text=language_manager.get_text("add_member", user.language_code))],
+        [KeyboardButton(text=language_manager.get_text("create_team", user.language_code))],
+        [KeyboardButton(text=language_manager.get_text("view_tasks", user.language_code))]
     ]
     
     return ReplyKeyboardMarkup(
         keyboard=buttons,
         resize_keyboard=True,
-        input_field_placeholder="Select an option"
+        input_field_placeholder=language_manager.get_text("select_option", user.language_code)
     )
 
 @router.message(Command("start"))
-async def cmd_start(message: Message, bot):
+async def cmd_start(message: Message):
+    # Check if user exists
     async with async_session() as session:
-        # Check if user already exists
         query = select(User).where(User.telegram_id == message.from_user.id)
         result = await session.execute(query)
         user = result.scalar_one_or_none()
@@ -48,32 +59,72 @@ async def cmd_start(message: Message, bot):
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name,
                 username=message.from_user.username,
-                role=UserRole.MEMBER
+                role=UserRole.MEMBER,
+                language_code='en'  # Default language
             )
             session.add(user)
             await session.commit()
+    
+    # Show language selection menu
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=name,
+                callback_data=f"set_language:{code}"
+            )
+        ]
+        for code, name in language_manager.get_available_languages().items()
+    ])
+    
+    await message.answer(
+        language_manager.get_text("select_language", user.language_code),
+        reply_markup=keyboard
+    )
+
+@router.callback_query(F.data.startswith("set_language:"))
+async def process_language_selection(callback: CallbackQuery):
+    """Handle language selection callback."""
+    lang_code = callback.data.split(":")[1]
+    
+    if not language_manager.is_valid_language(lang_code):
+        await callback.answer("Invalid language selection")
+        return
+    
+    # Update user's language preference
+    async with async_session() as session:
+        query = select(User).where(User.telegram_id == callback.from_user.id)
+        result = await session.execute(query)
+        user = result.scalar_one_or_none()
+        
+        if user:
+            user.language_code = lang_code
+            await session.commit()
             
             # Set up commands menu
-            await set_commands(bot)
+            await set_commands(callback.bot)
             
-            await message.answer(
-                "👋 Welcome to Task Manager Bot!\n\n"
-                "I'm here to help you manage your tasks and teams efficiently.\n\n"
-                "Here's what you can do:\n"
-                "1️⃣ Create and manage teams\n"
-                "2️⃣ Assign and track tasks\n"
-                "3️⃣ Collaborate with team members\n\n"
-                "Use /menu to see the main menu or /help for detailed instructions.\n"
-                "Use /show_keyboard to show the keyboard menu.",
-                reply_markup=get_keyboard_menu(user)
+            # Show welcome message in selected language
+            await callback.message.edit_text(
+                language_manager.get_text("welcome", lang_code)
+            )
+            
+            # Show keyboard menu with translated buttons
+            keyboard = get_keyboard_menu(user)
+            keyboard.keyboard = [
+                [KeyboardButton(text=language_manager.get_text("add_task", lang_code))],
+                [KeyboardButton(text=language_manager.get_text("add_member", lang_code))],
+                [KeyboardButton(text=language_manager.get_text("create_team", lang_code))],
+                [KeyboardButton(text=language_manager.get_text("view_tasks", lang_code))]
+            ]
+            
+            await callback.message.answer(
+                language_manager.get_text("main_menu", lang_code),
+                reply_markup=keyboard
             )
         else:
-            await message.answer(
-                "👋 Welcome back!\n\n"
-                "Use /menu to see the main menu or /help for detailed instructions.\n"
-                "Use /show_keyboard to show the keyboard menu.",
-                reply_markup=get_keyboard_menu(user)
-            )
+            await callback.answer("Error: User not found")
+    
+    await callback.answer()
 
 @router.message(Command("show_keyboard"))
 async def cmd_show_keyboard(message: Message, user: User):
@@ -90,23 +141,16 @@ async def cmd_hide_keyboard(message: Message):
     )
 
 @router.message(Command("menu"))
-async def cmd_menu(message: Message):
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
+async def cmd_menu(message: Message, user: User):
+    # Create keyboard with menu options
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👥 Teams", callback_data="menu_teams"),
-            InlineKeyboardButton(text="📝 Tasks", callback_data="menu_tasks")
-        ],
-        [
-            InlineKeyboardButton(text="❓ Help", callback_data="menu_help"),
-            InlineKeyboardButton(text="ℹ️ About", callback_data="menu_about")
-        ]
+        [InlineKeyboardButton(text=language_manager.get_text("create_team", user.language_code), callback_data="menu_teams")],
+        [InlineKeyboardButton(text=language_manager.get_text("my_tasks", user.language_code), callback_data="menu_tasks")],
+        [InlineKeyboardButton(text=language_manager.get_text("settings", user.language_code), callback_data="menu_settings")]
     ])
     
     await message.answer(
-        "🎯 Main Menu\n\n"
-        "Select an option below:",
+        language_manager.get_text("main_menu", user.language_code),
         reply_markup=keyboard
     )
 
@@ -146,69 +190,114 @@ Need more help? Use /menu to access the main menu.
 """
     await message.answer(help_text, parse_mode="Markdown")
 
-@router.message(F.text == "📝 Add Task")
-async def handle_add_task_button(message: Message, state: FSMContext, user: User):
-    # Get user's teams
-    async with async_session() as session:
-        query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
-        result = await session.execute(query)
-        teams = result.scalars().all()
+@router.message(F.text)
+async def handle_menu_button(message: Message, state: FSMContext, user: User):
+    try:
+        print(f"Handling menu button for user {user.id} with language {user.language_code}")
         
-        if not teams:
-            await message.answer("You need to be a member of a team to add tasks. Create or join a team first.")
+        # Get current state
+        current_state = await state.get_state()
+        print(f"Current state: {current_state}")
+        
+        # Get user-specific text for menu options
+        create_team_text = language_manager.get_text("create_team", user.language_code)
+        add_member_text = language_manager.get_text("add_member", user.language_code)
+        add_task_text = language_manager.get_text("add_task", user.language_code)
+        view_tasks_text = language_manager.get_text("view_tasks", user.language_code)
+        
+        print(f"Received text: {message.text}")
+        print(f"Expected create team text: {create_team_text}")
+        
+        # If we're in a state, only allow task description input
+        if current_state == "TaskStates:waiting_for_task_description":
+            await process_task_description(message, state, user)
             return
-    
-    # Create inline keyboard for team selection
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=team.name, callback_data=f"team_{team.id}")]
-        for team in teams
-    ])
-    
-    await state.set_state(TaskStates.waiting_for_team_selection)
-    await message.answer("Select the team to add the task to:", reply_markup=keyboard)
-
-@router.message(F.text == "👥 Add Member")
-async def handle_add_member_button(message: Message, state: FSMContext, user: User):
-    # Get user's teams where they are a manager
-    async with async_session() as session:
-        query = select(Team).join(TeamMember).where(
-            TeamMember.user_id == user.id,
-            TeamMember.role == "Manager"
+        elif current_state:
+            print(f"User is in state {current_state}, skipping menu button handling")
+            return
+        
+        if message.text == create_team_text:
+            await state.set_state(TeamStates.waiting_for_team_name)
+            await message.answer(
+                language_manager.get_text("team_name_prompt", user.language_code)
+            )
+        
+        elif message.text == add_member_text:
+            # Get user's teams where they are a manager
+            async with async_session() as session:
+                query = select(Team).join(TeamMember).where(
+                    TeamMember.user_id == user.id,
+                    TeamMember.role == "Manager"
+                )
+                result = await session.execute(query)
+                teams = result.scalars().all()
+                
+                if not teams:
+                    await message.answer(
+                        language_manager.get_text("not_authorized", user.language_code)
+                    )
+                    return
+            
+            await state.set_state(TeamStates.waiting_for_member_username)
+            await message.answer(
+                language_manager.get_text("member_username_prompt", user.language_code)
+            )
+        
+        elif message.text == add_task_text:
+            async with async_session() as session:
+                # Get user's teams
+                query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
+                result = await session.execute(query)
+                teams = result.scalars().all()
+                
+                if not teams:
+                    await message.answer(
+                        language_manager.get_text("not_in_team", user.language_code)
+                    )
+                    return
+                
+                # Create inline keyboard for team selection
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=team.name, callback_data=f"team_{team.id}")]
+                    for team in teams
+                ])
+                
+                await state.set_state(TaskStates.waiting_for_team_selection)
+                await message.answer(
+                    language_manager.get_text("select_team", user.language_code),
+                    reply_markup=keyboard
+                )
+        
+        elif message.text == view_tasks_text:
+            async with async_session() as session:
+                # Get user's teams
+                query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
+                result = await session.execute(query)
+                teams = result.scalars().all()
+                
+                if not teams:
+                    await message.answer(
+                        language_manager.get_text("not_in_team", user.language_code)
+                    )
+                    return
+                
+                # Create inline keyboard for team selection
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=team.name, callback_data=f"view_tasks_{team.id}")]
+                    for team in teams
+                ])
+                
+                await message.answer(
+                    language_manager.get_text("select_team_view", user.language_code),
+                    reply_markup=keyboard
+                )
+    except Exception as e:
+        print(f"Error handling menu button: {e}")  # For debugging
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")  # Debug log
+        await message.answer(
+            language_manager.get_text("error_occurred", user.language_code)
         )
-        result = await session.execute(query)
-        teams = result.scalars().all()
-        
-        if not teams:
-            await message.answer("You need to be a manager of a team to add members. Create a team first.")
-            return
-    
-    await state.set_state(TeamStates.waiting_for_member_username)
-    await message.answer("Please enter the Telegram username of the new member:")
-
-@router.message(F.text == "➕ Create Team")
-async def handle_create_team_button(message: Message, state: FSMContext, user: User):
-    await state.set_state(TeamStates.waiting_for_team_name)
-    await message.answer("Please enter the name for your new team:")
-
-@router.message(F.text == "📋 Tasks")
-async def handle_tasks_button(message: Message, user: User):
-    async with async_session() as session:
-        # Get user's teams
-        query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
-        result = await session.execute(query)
-        teams = result.scalars().all()
-        
-        if not teams:
-            await message.answer("You need to be a member of a team first.")
-            return
-        
-        # Create inline keyboard for team selection
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=team.name, callback_data=f"view_tasks_{team.id}")]
-            for team in teams
-        ])
-        
-        await message.answer("Select a team to view tasks:", reply_markup=keyboard)
 
 @router.message(F.text == "❓ Help")
 async def handle_help_button(message: Message, user: User):
@@ -230,43 +319,55 @@ async def handle_about_button(message: Message):
 
 @router.callback_query(F.data.startswith("menu_"))
 async def process_menu_callback(callback: CallbackQuery):
-    action = callback.data.split("_")[1]
-    
-    if action == "teams":
-        await callback.message.answer(
-            "👥 *Teams Management*\n\n"
-            "• /create_team - Create a new team\n"
-            "• /add_member - Add member to team\n\n"
-            "Note: Team management features are available for managers only.",
-            parse_mode="Markdown"
-        )
-    elif action == "tasks":
-        await callback.message.answer(
-            "📝 *Tasks Management*\n\n"
-            "• /add_task - Create a new task\n"
-            "• /tasks - View your tasks\n\n"
-            "Tasks can be assigned to team members and tracked.",
-            parse_mode="Markdown"
-        )
-    elif action == "help":
+    try:
+        action = callback.data.split("_")[1]
+        
         # Get user from database
         async with async_session() as session:
             query = select(User).where(User.telegram_id == callback.from_user.id)
             result = await session.execute(query)
             user = result.scalar_one_or_none()
-            if user:
-                await cmd_help(callback.message, user)
-    elif action == "about":
+            
+            if not user:
+                await callback.answer()
+                return
+        
+        if action == "teams":
+            await callback.message.answer(
+                language_manager.get_text(
+                    "teams_management",
+                    user.language_code,
+                    create_team=language_manager.get_text("create_team", user.language_code),
+                    add_member=language_manager.get_text("add_member", user.language_code)
+                ),
+                parse_mode="Markdown"
+            )
+        elif action == "tasks":
+            await callback.message.answer(
+                language_manager.get_text(
+                    "tasks_management",
+                    user.language_code,
+                    add_task=language_manager.get_text("add_task", user.language_code),
+                    view_tasks=language_manager.get_text("view_tasks", user.language_code)
+                ),
+                parse_mode="Markdown"
+            )
+        elif action == "help":
+            await cmd_help(callback.message, user)
+        elif action == "about":
+            await callback.message.answer(
+                language_manager.get_text(
+                    "about_bot",
+                    user.language_code,
+                    features=language_manager.get_text("bot_features", user.language_code)
+                ),
+                parse_mode="Markdown"
+            )
+        
+        await callback.answer()
+    except Exception as e:
+        print(f"Error processing menu callback: {e}")  # For debugging
         await callback.message.answer(
-            "ℹ️ *About Task Manager Bot*\n\n"
-            "A powerful tool for managing tasks and teams in Telegram.\n\n"
-            "Features:\n"
-            "• Team management\n"
-            "• Task assignment\n"
-            "• Progress tracking\n"
-            "• Role-based access\n\n"
-            "Use /help for detailed instructions.",
-            parse_mode="Markdown"
+            language_manager.get_text("error_occurred", callback.from_user.language_code)
         )
-    
-    await callback.answer() 
+        await callback.answer() 

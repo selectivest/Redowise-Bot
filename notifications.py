@@ -6,6 +6,7 @@ from database.connection import async_session
 from sqlalchemy import select
 from collections import defaultdict
 import random
+from languages.manager import language_manager
 
 class NotificationSystem:
     def __init__(self, bot: Bot):
@@ -41,7 +42,7 @@ class NotificationSystem:
             task.cancel()
         self.notification_tasks.clear()
 
-    async def send_notification(self, user_id: int, message: str):
+    async def send_notification(self, user_id: int, message: str, lang_code: str = 'en'):
         """Send notification or queue it if in quiet hours"""
         try:
             now = datetime.now()
@@ -58,60 +59,64 @@ class NotificationSystem:
 
     async def notify_new_task(self, task: Task, assignee: User):
         """Send notification when a new task is assigned"""
-        message = (
-            f"📝 New Task Assigned!\n\n"
-            f"🔹 Task ID: {task.id}\n"
-            f"📄 Description: {task.description}\n"
-            f"📅 Due Date: {task.due_date.strftime('%d.%m.%Y')}\n"
-            f"Status: To Do"
+        message = language_manager.get_text(
+            "new_task",
+            assignee.language_code,
+            task_id=task.id,
+            description=task.description,
+            due_date=task.due_date.strftime('%d.%m.%Y')
         )
-        await self.send_notification(assignee.telegram_id, message)
+        await self.send_notification(assignee.telegram_id, message, assignee.language_code)
 
     async def notify_status_change(self, task: Task, assignee: User, manager: User, new_status: str):
         """Send notification when task status changes"""
         # Notify manager when assignee changes status
-        manager_message = (
-            f"🔄 Task Status Updated!\n\n"
-            f"🔹 Task ID: {task.id}\n"
-            f"👤 Assignee: {assignee.first_name} {assignee.last_name}\n"
-            f"📄 Description: {task.description}\n"
-            f"📅 Due Date: {task.due_date.strftime('%d.%m.%Y')}\n"
-            f"New Status: {new_status}"
+        manager_message = language_manager.get_text(
+            "status_change_manager",
+            manager.language_code,
+            task_id=task.id,
+            assignee_name=f"{assignee.first_name} {assignee.last_name}",
+            description=task.description,
+            due_date=task.due_date.strftime('%d.%m.%Y'),
+            new_status=new_status
         )
-        await self.send_notification(manager.telegram_id, manager_message)
+        await self.send_notification(manager.telegram_id, manager_message, manager.language_code)
 
         # Notify assignee when manager changes status
-        assignee_message = (
-            f"🔄 Your Task Status Has Been Updated!\n\n"
-            f"🔹 Task ID: {task.id}\n"
-            f"📄 Description: {task.description}\n"
-            f"📅 Due Date: {task.due_date.strftime('%d.%m.%Y')}\n"
-            f"New Status: {new_status}"
+        assignee_message = language_manager.get_text(
+            "status_change_assignee",
+            assignee.language_code,
+            task_id=task.id,
+            description=task.description,
+            due_date=task.due_date.strftime('%d.%m.%Y'),
+            new_status=new_status
         )
-        await self.send_notification(assignee.telegram_id, assignee_message)
+        await self.send_notification(assignee.telegram_id, assignee_message, assignee.language_code)
 
     async def notify_task_deleted(self, task: Task, assignee: User, deleted_by: User):
         """Send notification when a task is deleted"""
-        message = (
-            f"🗑️ Task Deleted\n\n"
-            f"🔹 Task ID: {task.id}\n"
-            f"📄 Description: {task.description}\n"
-            f"📅 Due Date: {task.due_date.strftime('%d.%m.%Y')}\n"
-            f"Status: {task.status}\n"
-            f"Deleted by: {deleted_by.first_name} {deleted_by.last_name}"
+        message = language_manager.get_text(
+            "task_deleted",
+            assignee.language_code,
+            task_id=task.id,
+            description=task.description,
+            due_date=task.due_date.strftime('%d.%m.%Y'),
+            status=task.status,
+            deleted_by=f"{deleted_by.first_name} {deleted_by.last_name}"
         )
-        await self.send_notification(assignee.telegram_id, message)
+        await self.send_notification(assignee.telegram_id, message, assignee.language_code)
 
     async def notify_due_date_reminder(self, task: Task, assignee: User):
         """Send notification one day before due date"""
-        message = (
-            f"⚠️ Task Due Tomorrow!\n\n"
-            f"🔹 Task ID: {task.id}\n"
-            f"📄 Description: {task.description}\n"
-            f"📅 Due Date: {task.due_date.strftime('%d.%m.%Y')}\n"
-            f"Status: {task.status}"
+        message = language_manager.get_text(
+            "due_date_reminder",
+            assignee.language_code,
+            task_id=task.id,
+            description=task.description,
+            due_date=task.due_date.strftime('%d.%m.%Y'),
+            status=task.status
         )
-        await self.send_notification(assignee.telegram_id, message)
+        await self.send_notification(assignee.telegram_id, message, assignee.language_code)
 
     async def deliver_queued_notifications(self):
         """Deliver queued notifications when quiet hours end"""
@@ -137,8 +142,20 @@ class NotificationSystem:
                 # Deliver all queued notifications
                 for user_id, messages in self.queued_notifications.items():
                     if messages:
+                        # Get user's language preference
+                        async with async_session() as session:
+                            user = await session.get(User, user_id)
+                            if user:
+                                lang_code = user.language_code
+                            else:
+                                lang_code = 'en'
+                        
                         # Combine all messages for this user
-                        combined_message = "📋 You have new notifications:\n\n" + "\n\n".join(messages)
+                        combined_message = language_manager.get_text(
+                            "queued_notifications",
+                            lang_code,
+                            notifications="\n\n".join(messages)
+                        )
                         await self.bot.send_message(user_id, combined_message)
                         # Clear the queue for this user
                         self.queued_notifications[user_id] = []
@@ -198,19 +215,29 @@ class NotificationSystem:
                         user = user_result.scalar_one_or_none()
                         
                         if user:
-                            message = "📋 Your Tasks for Today:\n\n"
+                            # Format tasks list
+                            tasks_text = ""
                             for task in user_tasks:
                                 remaining_days = (
                                     task.due_date.date() - datetime.now().date()
                                 ).days
-                                message += (
-                                    f"🔹 Task ID: {task.id}\n"
-                                    f"📄 Description: {task.description}\n"
-                                    f"📅 Due Date: {task.due_date.strftime('%d.%m.%Y')}({remaining_days} days)\n"
-                                    f"Status: {task.status}\n"
-                                    f"➖➖➖➖➖➖➖➖\n"
+                                tasks_text += language_manager.get_text(
+                                    "task_item",
+                                    user.language_code,
+                                    task_id=task.id,
+                                    description=task.description,
+                                    due_date=task.due_date.strftime('%d.%m.%Y'),
+                                    remaining_days=remaining_days,
+                                    status=task.status
                                 )
-                            await self.send_notification(user.telegram_id, message)
+                            
+                            # Send daily tasks notification
+                            message = language_manager.get_text(
+                                "daily_tasks",
+                                user.language_code,
+                                tasks=tasks_text
+                            )
+                            await self.send_notification(user.telegram_id, message, user.language_code)
                 
             except asyncio.CancelledError:
                 break

@@ -25,9 +25,9 @@ dp.message.middleware(AuthMiddleware())
 dp.callback_query.middleware(AuthMiddleware())
 
 # Register routers
-dp.include_router(user.router)
 dp.include_router(team.router)
 dp.include_router(task.router)
+dp.include_router(user.router)
 
 async def main():
     # Create database tables
