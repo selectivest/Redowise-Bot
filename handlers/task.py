@@ -15,7 +15,6 @@ import calendar as cal
 from typing import Tuple, Optional
 from aiogram.filters.callback_data import CallbackData
 from languages.manager import language_manager
-import jdatetime
 
 router = Router()
 notification_system = None
