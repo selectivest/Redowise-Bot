@@ -320,54 +320,98 @@ async def handle_about_button(message: Message):
 @router.callback_query(F.data.startswith("menu_"))
 async def process_menu_callback(callback: CallbackQuery):
     try:
-        action = callback.data.split("_")[1]
-        
-        # Get user from database
+        # Get user from database to ensure we have the correct language code
         async with async_session() as session:
             query = select(User).where(User.telegram_id == callback.from_user.id)
             result = await session.execute(query)
             user = result.scalar_one_or_none()
             
             if not user:
-                await callback.answer()
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", 'en')
+                )
                 return
-        
-        if action == "teams":
-            await callback.message.answer(
-                language_manager.get_text(
-                    "teams_management",
-                    user.language_code,
-                    create_team=language_manager.get_text("create_team", user.language_code),
-                    add_member=language_manager.get_text("add_member", user.language_code)
-                ),
-                parse_mode="Markdown"
-            )
-        elif action == "tasks":
-            await callback.message.answer(
-                language_manager.get_text(
-                    "tasks_management",
-                    user.language_code,
-                    add_task=language_manager.get_text("add_task", user.language_code),
-                    view_tasks=language_manager.get_text("view_tasks", user.language_code)
-                ),
-                parse_mode="Markdown"
-            )
-        elif action == "help":
-            await cmd_help(callback.message, user)
-        elif action == "about":
-            await callback.message.answer(
-                language_manager.get_text(
-                    "about_bot",
-                    user.language_code,
-                    features=language_manager.get_text("bot_features", user.language_code)
-                ),
-                parse_mode="Markdown"
-            )
-        
-        await callback.answer()
+                
+            menu_type = callback.data.split('_')[1]
+            
+            if menu_type == "tasks":
+                # Show tasks menu
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("view_tasks", user.language_code),
+                            callback_data="view_tasks"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("add_task", user.language_code),
+                            callback_data="add_task"
+                        )
+                    ]
+                ])
+                
+                await callback.message.edit_text(
+                    language_manager.get_text("tasks_menu", user.language_code),
+                    reply_markup=keyboard
+                )
+            elif menu_type == "teams":
+                # Show teams menu
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("view_teams", user.language_code),
+                            callback_data="view_teams"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("create_team", user.language_code),
+                            callback_data="create_team"
+                        )
+                    ]
+                ])
+                
+                await callback.message.edit_text(
+                    language_manager.get_text("teams_menu", user.language_code),
+                    reply_markup=keyboard
+                )
+            elif menu_type == "settings":
+                # Show settings menu
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("change_language", user.language_code),
+                            callback_data="change_language"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("notification_settings", user.language_code),
+                            callback_data="notification_settings"
+                        )
+                    ]
+                ])
+                
+                await callback.message.edit_text(
+                    language_manager.get_text("settings_menu", user.language_code),
+                    reply_markup=keyboard
+                )
+            elif menu_type == "about":
+                # Show about menu
+                await callback.message.edit_text(
+                    language_manager.get_text(
+                        "about_bot",
+                        user.language_code,
+                        features=language_manager.get_text("bot_features", user.language_code)
+                    ),
+                    parse_mode="Markdown"
+                )
+            
+            await callback.answer()
     except Exception as e:
         print(f"Error processing menu callback: {e}")  # For debugging
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code)
+            language_manager.get_text("error_occurred", user.language_code)
         )
         await callback.answer() 
