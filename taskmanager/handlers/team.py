@@ -327,6 +327,17 @@ async def process_invitation_accept(callback: CallbackQuery):
             
             invitation = pending_invitations[invitation_id]
             
+            # Get manager info for notification
+            manager_query = select(User).where(User.id == invitation['manager_id'])
+            manager_result = await session.execute(manager_query)
+            manager = manager_result.scalar_one_or_none()
+            
+            if not manager:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", user.language_code)
+                )
+                return
+            
             # Add member to team
             team_member = TeamMember(
                 team_id=invitation['team_id'],
@@ -342,18 +353,18 @@ async def process_invitation_accept(callback: CallbackQuery):
                     "team_joined",
                     user.language_code,
                     team_name=invitation['team_name'],
-                    manager_username=invitation['manager_username']
+                    manager_username=manager.username
                 )
             )
             
             try:
                 # Notify manager
                 await callback.bot.send_message(
-                    chat_id=invitation['manager_id'],
+                    chat_id=manager.telegram_id,
                     text=language_manager.get_text(
                         "member_accepted",
-                        user.language_code,
-                        username=invitation['member_username'],
+                        manager.language_code,  # Use manager's language preference
+                        username=user.username,
                         team_name=invitation['team_name']
                     )
                 )
@@ -364,6 +375,7 @@ async def process_invitation_accept(callback: CallbackQuery):
         del pending_invitations[invitation_id]
         await callback.answer()
     except Exception as e:
+        print(f"Error processing invitation acceptance: {e}")  # Debug log
         await callback.message.answer(
             language_manager.get_text("error_occurred", user.language_code)
         )
