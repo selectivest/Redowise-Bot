@@ -1,12 +1,12 @@
 from aiogram import Bot
 from datetime import datetime, time, timedelta
 import asyncio
-from database.models import User, Task
-from database.connection import async_session
+from taskmanager.database.models import User, Task
+from taskmanager.database.connection import async_session
 from sqlalchemy import select
 from collections import defaultdict
 import random
-from languages.manager import language_manager
+from taskmanager.languages.manager import language_manager
 
 class NotificationSystem:
     def __init__(self, bot: Bot):

@@ -25,7 +25,7 @@ class LanguageManager:
         languages_dir = os.path.dirname(os.path.abspath(__file__))
         for lang_code in self._available_languages.keys():
             try:
-                module = importlib.import_module(f'.{lang_code}', package='languages')
+                module = importlib.import_module(f'.{lang_code}', package='taskmanager.languages')
                 self._translations[lang_code] = module.translations
             except ImportError as e:
                 print(f"Error loading translations for {lang_code}: {e}")

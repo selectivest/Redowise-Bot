@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 # Add the project root directory to Python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
@@ -12,13 +12,13 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
-from config import Config
-from database.models import Base, User
-from database.connection import engine, async_session
-from handlers import user, team, task
-from middlewares.auth import AuthMiddleware
-from middlewares.user import UserMiddleware
-from languages.manager import language_manager
+from taskmanager.config import Config
+from taskmanager.database.models import Base, User
+from taskmanager.database.connection import engine, async_session
+from taskmanager.handlers import user, team, task
+from taskmanager.middlewares.auth import AuthMiddleware
+from taskmanager.middlewares.user import UserMiddleware
+from taskmanager.languages.manager import language_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
