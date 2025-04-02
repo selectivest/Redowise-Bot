@@ -82,6 +82,7 @@ translations: Dict[str, str] = {
     "error_occurred": "حدث خطأ. الرجاء المحاولة مرة أخرى.",
     "invalid_input": "إدخال غير صالح. الرجاء المحاولة مرة أخرى.",
     "not_authorized": "يجب أن تكون مدير فريق لإضافة عضو جديد. قم بإنشاء فريق أولاً باستخدام الأمر /create_team.",
+    "database_error": "خطأ في قاعدة البيانات. الرجاء المحاولة مرة أخرى.",
     
     # Calendar
     "calendar_instructions": "الرجاء اختيار التاريخ من التقويم:",

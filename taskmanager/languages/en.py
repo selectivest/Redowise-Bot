@@ -80,6 +80,7 @@ translations: Dict[str, str] = {
     "error_occurred": "An error occurred. Please try again.",
     "invalid_input": "Invalid input. Please try again.",
     "not_authorized": "You need to be a team manager to add new members. Create a team first using /create_team.",
+    "database_error": "Database error. Please try again.",
     
     # Calendar
     "calendar_instructions": "Please select a date:\n🔵 Today\n❌ Disabled dates (past or beyond 1 year)\n📅 Available dates",

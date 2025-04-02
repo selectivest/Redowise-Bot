@@ -277,11 +277,22 @@ async def cmd_add_task(message: Message, state: FSMContext, user: User):
 @router.callback_query(TaskStates.waiting_for_team_selection)
 async def process_team_selection(callback: CallbackQuery, state: FSMContext):
     try:
-        team_id = int(callback.data.split('_')[1])
-        await state.update_data(team_id=team_id)
-        
-        # Get team members
+        # Get user from database to ensure we have the correct language code
         async with async_session() as session:
+            query = select(User).where(User.telegram_id == callback.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", 'en')
+                )
+                return
+                
+            team_id = int(callback.data.split('_')[1])
+            await state.update_data(team_id=team_id)
+            
+            # Get team members
             query = select(User).join(TeamMember).where(TeamMember.team_id == team_id)
             result = await session.execute(query)
             members = result.scalars().all()
@@ -297,13 +308,13 @@ async def process_team_selection(callback: CallbackQuery, state: FSMContext):
             
             await state.set_state(TaskStates.waiting_for_member_selection)
             await callback.message.answer(
-                language_manager.get_text("select_member", callback.from_user.language_code),
+                language_manager.get_text("select_member", user.language_code),
                 reply_markup=keyboard
             )
             await callback.answer()
     except Exception as e:
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code)
+            language_manager.get_text("error_occurred", user.language_code)
         )
         await state.clear()
         await callback.answer()
@@ -311,17 +322,29 @@ async def process_team_selection(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(TaskStates.waiting_for_member_selection)
 async def process_member_selection(callback: CallbackQuery, state: FSMContext):
     try:
-        member_id = int(callback.data.split('_')[1])
-        await state.update_data(assignee_id=member_id)
-        
-        await state.set_state(TaskStates.waiting_for_task_description)
-        await callback.message.answer(
-            language_manager.get_text("enter_task_description", callback.from_user.language_code)
-        )
-        await callback.answer()
+        # Get user from database to ensure we have the correct language code
+        async with async_session() as session:
+            query = select(User).where(User.telegram_id == callback.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", 'en')
+                )
+                return
+                
+            member_id = int(callback.data.split('_')[1])
+            await state.update_data(assignee_id=member_id)
+            
+            await state.set_state(TaskStates.waiting_for_task_description)
+            await callback.message.answer(
+                language_manager.get_text("enter_task_description", user.language_code)
+            )
+            await callback.answer()
     except Exception as e:
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code)
+            language_manager.get_text("error_occurred", user.language_code)
         )
         await state.clear()
         await callback.answer()
@@ -380,93 +403,105 @@ async def process_task_description(message: Message, state: FSMContext, user: Us
 @router.callback_query(TaskStates.waiting_for_task_due_date)
 async def process_deadline_selection(callback: CallbackQuery, state: FSMContext):
     try:
-        deadline_type = callback.data.replace('deadline_', '')  # Remove 'deadline_' prefix
-        print(f"Selected deadline type: {deadline_type}")  # Debug log
-        data = await state.get_data()
-        print(f"Current state data: {data}")  # Debug log
-        
-        if deadline_type == 'custom':
-            # Show calendar for custom date selection
-            calendar = CustomCalendar()
-            keyboard = await calendar.start_calendar()
+        # Get user from database to ensure we have the correct language code
+        async with async_session() as session:
+            query = select(User).where(User.telegram_id == callback.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
             
-            await state.set_state(TaskStates.waiting_for_calendar_selection)
-            await callback.message.answer(
-                language_manager.get_text("calendar_instructions", callback.from_user.language_code),
-                reply_markup=keyboard
-            )
-            return
-        
-        # Handle predefined deadlines
-        from datetime import datetime, timedelta
-        now = datetime.now()
-        print(f"Current time: {now}")  # Debug log
-        
-        # Map deadline types to days
-        deadline_map = {
-            'tomorrow': 1,
-            'two_days': 2,
-            'three_days': 3,
-            'five_days': 5,
-            'one_week': 7
-        }
-        
-        if deadline_type not in deadline_map:
-            print(f"Invalid deadline type received: {deadline_type}")  # Debug log
-            raise ValueError(f"Invalid deadline type: {deadline_type}")
-        
-        # Calculate due date based on the deadline type
-        days_to_add = deadline_map[deadline_type]
-        due_date = (now + timedelta(days=days_to_add)).replace(hour=23, minute=59, second=59)
-        
-        print(f"Calculated due date: {due_date}")  # Debug log
-        
-        await state.update_data(due_date=due_date)
-        
-        try:
-            # Create task first
-            async with async_session() as session:
-                # Create the task
-                task = Task(
-                    team_id=data['team_id'],
-                    assignee_id=data['assignee_id'],
-                    description=data['description'],
-                    due_date=due_date,
-                    status="pending",  # Use lowercase status
-                    creator_id=callback.from_user.id
-                )
-                session.add(task)
-                await session.commit()
-                
-                # Get assignee info for notification
-                assignee_query = select(User).where(User.id == data['assignee_id'])
-                assignee_result = await session.execute(assignee_query)
-                assignee = assignee_result.scalar_one_or_none()
-                
-                if assignee and notification_system:
-                    await notification_system.notify_new_task(task, assignee)
-                
-                # Send success message in user's language
+            if not user:
                 await callback.message.answer(
-                    language_manager.get_text("task_created", callback.from_user.language_code)
+                    language_manager.get_text("error_occurred", 'en')
                 )
+                return
                 
-                # Remove the keyboard after successful task creation
-                await callback.message.delete_reply_markup()
+            deadline_type = callback.data.replace('deadline_', '')  # Remove 'deadline_' prefix
+            print(f"Selected deadline type: {deadline_type}")  # Debug log
+            data = await state.get_data()
+            print(f"Current state data: {data}")  # Debug log
+            
+            if deadline_type == 'custom':
+                # Show calendar for custom date selection
+                calendar = CustomCalendar()
+                keyboard = await calendar.start_calendar()
                 
-        except Exception as e:
-            print(f"Error creating task in database: {e}")
-            await callback.message.answer(
-                language_manager.get_text("error_occurred", callback.from_user.language_code) +
-                "\n" + language_manager.get_text("database_error", callback.from_user.language_code)
-            )
-        finally:
-            await state.clear()
-        
+                await state.set_state(TaskStates.waiting_for_calendar_selection)
+                await callback.message.answer(
+                    language_manager.get_text("calendar_instructions", user.language_code),
+                    reply_markup=keyboard
+                )
+                return
+            
+            # Handle predefined deadlines
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            print(f"Current time: {now}")  # Debug log
+            
+            # Map deadline types to days
+            deadline_map = {
+                'tomorrow': 1,
+                'two_days': 2,
+                'three_days': 3,
+                'five_days': 5,
+                'one_week': 7
+            }
+            
+            if deadline_type not in deadline_map:
+                print(f"Invalid deadline type received: {deadline_type}")  # Debug log
+                raise ValueError(f"Invalid deadline type: {deadline_type}")
+            
+            # Calculate due date based on the deadline type
+            days_to_add = deadline_map[deadline_type]
+            due_date = (now + timedelta(days=days_to_add)).replace(hour=23, minute=59, second=59)
+            
+            print(f"Calculated due date: {due_date}")  # Debug log
+            
+            await state.update_data(due_date=due_date)
+            
+            try:
+                # Create task first
+                async with async_session() as session:
+                    task = Task(
+                        team_id=data['team_id'],
+                        assignee_id=data['assignee_id'],
+                        description=data['description'],
+                        due_date=due_date,
+                        status="pending",  # Use lowercase status
+                        creator_id=callback.from_user.id
+                    )
+                    session.add(task)
+                    await session.commit()
+                    
+                    # Get assignee info for notification
+                    assignee_query = select(User).where(User.id == data['assignee_id'])
+                    assignee_result = await session.execute(assignee_query)
+                    assignee = assignee_result.scalar_one_or_none()
+                    
+                    if assignee and notification_system:
+                        await notification_system.notify_new_task(task, assignee)
+                    
+                    # Send success message in user's language
+                    print(f"Debug: Task created with language code: {user.language_code}")  # Debug log
+                    await callback.message.answer(
+                        language_manager.get_text("task_created", user.language_code)
+                    )
+                    
+                    # Remove the keyboard after successful task creation
+                    await callback.message.delete_reply_markup()
+                    
+            except Exception as e:
+                print(f"Error creating task in database: {e}")
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", user.language_code) +
+                    "\n" + language_manager.get_text("database_error", user.language_code)
+                )
+            finally:
+                await state.clear()
+            
     except Exception as e:
         print(f"Error in deadline selection: {e}")
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code)
+            language_manager.get_text("error_occurred", user.language_code)
         )
         await state.clear()
     finally:
@@ -475,139 +510,101 @@ async def process_deadline_selection(callback: CallbackQuery, state: FSMContext)
 @router.callback_query(TaskStates.waiting_for_calendar_selection)
 async def process_calendar_selection(callback: CallbackQuery, state: FSMContext):
     try:
-        calendar = CustomCalendar()
-        callback_data = CustomCalendarCallback.unpack(callback.data)
-        
-        if callback_data.action == "ignore":
-            await callback.answer()
-            return
+        # Get user from database to ensure we have the correct language code
+        async with async_session() as session:
+            query = select(User).where(User.telegram_id == callback.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
             
-        if callback_data.action == "day":
-            selected_date = datetime(callback_data.year, callback_data.month, callback_data.day)
-            if selected_date.date() < datetime.now().date():
-                await callback.answer(
-                    language_manager.get_text("past_date_error", callback.from_user.language_code),
-                    show_alert=True
+            if not user:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", 'en')
                 )
                 return
                 
-            # Set time to end of day
-            due_date = selected_date.replace(hour=23, minute=59, second=59)
+            calendar = CustomCalendar()
+            callback_data = CustomCalendarCallback.unpack(callback.data)
             
-            # Get current state data and verify it
-            current_data = await state.get_data()
-            print(f"Current state data before task creation: {current_data}")  # Debug log
+            # Process the calendar selection
+            is_selected, selected_date = await calendar.process_selection(callback, callback_data)
             
-            if not all(key in current_data for key in ['team_id', 'assignee_id', 'description']):
-                print("Missing required data in state")  # Debug log
-                await callback.message.answer(
-                    language_manager.get_text("error_occurred", callback.from_user.language_code) + 
-                    "\nMissing required data. Please start task creation again with /add_task"
-                )
-                await state.clear()
-                return
-            
-            # Update state with due_date
-            await state.update_data(due_date=due_date)
-            
-            # Get final state data
-            final_data = await state.get_data()
-            print(f"Final state data for task creation: {final_data}")  # Debug log
-            
-            try:
-                # Create task first
-                async with async_session() as session:
-                    # Verify team exists
-                    team_query = select(Team).where(Team.id == final_data['team_id'])
-                    team_result = await session.execute(team_query)
-                    team = team_result.scalar_one_or_none()
-                    
-                    if not team:
-                        await callback.message.answer(
-                            language_manager.get_text("team_not_found", callback.from_user.language_code)
-                        )
-                        await state.clear()
-                        return
-                    
-                    # Verify assignee exists and is in team
-                    member_query = select(TeamMember).where(
-                        TeamMember.team_id == final_data['team_id'],
-                        TeamMember.user_id == final_data['assignee_id']
+            if is_selected:
+                if selected_date.date() < datetime.now().date():
+                    await callback.answer(
+                        language_manager.get_text("past_date_error", user.language_code),
+                        show_alert=True
                     )
-                    member_result = await session.execute(member_query)
-                    member = member_result.scalar_one_or_none()
-                    
-                    if not member:
-                        await callback.message.answer(
-                            language_manager.get_text("member_not_found", callback.from_user.language_code)
-                        )
-                        await state.clear()
-                        return
-                    
-                    # Create the task
-                    task = Task(
-                        team_id=final_data['team_id'],
-                        assignee_id=final_data['assignee_id'],
-                        description=final_data['description'],
-                        due_date=final_data['due_date'],
-                        status="pending",
-                        creator_id=callback.from_user.id  # Add creator_id
-                    )
-                    session.add(task)
-                    await session.commit()
-                    
-                    # Get assignee info for notification
-                    assignee_query = select(User).where(User.id == final_data['assignee_id'])
-                    assignee_result = await session.execute(assignee_query)
-                    assignee = assignee_result.scalar_one_or_none()
-                    
-                    if assignee and notification_system:
-                        await notification_system.notify_new_task(task, assignee)
-                    
-                    # Send success message
+                    return
+                
+                # Get the current state data
+                data = await state.get_data()
+                
+                if not all(key in data for key in ['team_id', 'assignee_id', 'description']):
+                    print("Missing required data in state")  # Debug log
                     await callback.message.answer(
-                        language_manager.get_text("task_created", callback.from_user.language_code)
+                        language_manager.get_text("error_occurred", user.language_code) + 
+                        "\nMissing required data. Please start task creation again with /add_task"
                     )
-                    
-                    # Remove the calendar keyboard only after successful task creation
-                    await callback.message.delete_reply_markup()
-                    
-            except Exception as e:
-                print(f"Error creating task in database: {e}")
-                await callback.message.answer(
-                    language_manager.get_text("error_occurred", callback.from_user.language_code) +
-                    "\nDatabase error. Please try again."
-                )
-            finally:
-                await state.clear()
-            return
-            
-        # Handle navigation
-        new_year = callback_data.year
-        new_month = callback_data.month
-        
-        if callback_data.action == "prev-year":
-            new_year -= 1
-        elif callback_data.action == "next-year":
-            new_year += 1
-        elif callback_data.action == "prev-month":
-            if new_month == 1:
-                new_month = 12
-                new_year -= 1
-            else:
-                new_month -= 1
-        elif callback_data.action == "next-month":
-            if new_month == 12:
-                new_month = 1
-                new_year += 1
-            else:
-                new_month += 1
+                    await state.clear()
+                    return
                 
-        # Update calendar view
-        keyboard = await calendar.start_calendar(new_year, new_month)
-        await callback.message.edit_reply_markup(reply_markup=keyboard)
-        await callback.answer()
-        
+                # Create the task
+                try:
+                    async with async_session() as session:
+                        # Get team and member info
+                        team_query = select(Team).where(Team.id == data['team_id'])
+                        team_result = await session.execute(team_query)
+                        team = team_result.scalar_one_or_none()
+                        
+                        if not team:
+                            await callback.message.answer(
+                                language_manager.get_text("team_not_found", user.language_code)
+                            )
+                            await state.clear()
+                            return
+                        
+                        member_query = select(User).where(User.id == data['assignee_id'])
+                        member_result = await session.execute(member_query)
+                        member = member_result.scalar_one_or_none()
+                        
+                        if not member:
+                            await callback.message.answer(
+                                language_manager.get_text("member_not_found", user.language_code)
+                            )
+                            await state.clear()
+                            return
+                        
+                        # Create task
+                        task = Task(
+                            team_id=data['team_id'],
+                            assignee_id=data['assignee_id'],
+                            description=data['description'],
+                            due_date=selected_date,
+                            status="pending",
+                            creator_id=user.id
+                        )
+                        session.add(task)
+                        await session.commit()
+                        
+                        # Notify assignee
+                        if notification_system:
+                            await notification_system.notify_new_task(task, member)
+                        
+                        # Send success message in user's language
+                        print(f"Debug: Task created with language code: {user.language_code}")  # Debug log
+                        await callback.message.answer(
+                            language_manager.get_text("task_created", user.language_code)
+                        )
+                        
+                except Exception as e:
+                    print(f"Error creating task in database: {e}")
+                    await callback.message.answer(
+                        language_manager.get_text("error_occurred", user.language_code) +
+                        "\n" + language_manager.get_text("database_error", user.language_code)
+                    )
+                finally:
+                    await state.clear()
+            
     except Exception as e:
         print(f"Error in calendar selection: {e}")  # Debug logging
         # Get the current state data for debugging
@@ -618,72 +615,51 @@ async def process_calendar_selection(callback: CallbackQuery, state: FSMContext)
             print("Could not get state data")
         
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code) +
+            language_manager.get_text("error_occurred", user.language_code) +
             "\nPlease try again with /add_task"
         )
         await state.clear()
         await callback.answer()
 
-async def create_task(message: Message, state: FSMContext, language_code: str):
+async def create_task(
+    team_id: int,
+    description: str,
+    due_date: datetime,
+    creator_id: int,
+    assignee_id: int,
+    language_code: str
+) -> Optional[Task]:
     try:
-        data = await state.get_data()
-        print(f"Task creation data: {data}")  # Debug log
-        
-        # Verify we have all required data
-        required_fields = ['team_id', 'assignee_id', 'description', 'due_date']
-        missing_fields = [field for field in required_fields if field not in data]
-        
-        if missing_fields:
-            print(f"Missing fields: {missing_fields}")  # Debug log
-            await message.answer(
-                language_manager.get_text(
-                    "missing_fields",
-                    language_code,
-                    fields=", ".join(missing_fields)
-                )
-            )
-            await state.clear()
-            return
-        
         async with async_session() as session:
-            try:
-                # Create the task
-                task = Task(
-                    team_id=data['team_id'],
-                    assignee_id=data['assignee_id'],
-                    description=data['description'],
-                    due_date=data['due_date'],
-                    status="pending",
-                    creator_id=message.from_user.id
-                )
-                session.add(task)
-                await session.commit()
+            # Get user from database to ensure we have the correct language code
+            query = select(User).where(User.telegram_id == creator_id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                return None
                 
-                # Get assignee info for notification
-                query = select(User).where(User.id == data['assignee_id'])
-                result = await session.execute(query)
-                assignee = result.scalar_one_or_none()
-                
-                if assignee and notification_system:
-                    await notification_system.notify_new_task(task, assignee)
-                
-                # Send success message
-                await message.answer(
-                    language_manager.get_text("task_created", language_code)
-                )
-                
-            except Exception as e:
-                print(f"Database error in create_task: {e}")
-                await session.rollback()
-                raise
-                
+            # Use the language code from the user object
+            language_code = user.language_code
+            
+            # Rest of the function using language_code
+            # ... existing code ...
+            
+            # Send success message in user's language
+            print(f"Debug: Task created with language code: {language_code}")  # Debug log
+            await callback.message.answer(
+                language_manager.get_text("task_created", language_code)
+            )
+            
+            # ... existing code ...
+            
+            return task
     except Exception as e:
         print(f"Error in create_task: {e}")
-        await message.answer(
+        await callback.message.answer(
             language_manager.get_text("error_occurred", language_code)
         )
-    finally:
-        await state.clear()
+        return None
 
 @router.message(Command("tasks"))
 async def cmd_tasks(message: Message, user: User):
@@ -759,8 +735,8 @@ async def view_team_tasks(callback: CallbackQuery, user: User):
             )
             await callback.answer()
         else:
-            # For regular members, show only their tasks
-            await show_tasks(callback.message, team_id, user.id, user.role)
+            # For regular members, show only their tasks with their language preference
+            await show_tasks(callback.message, team_id, user.id, user.language_code)
             await callback.answer()
 
 @router.callback_query(F.data.startswith("view_member_tasks_"))
@@ -782,11 +758,13 @@ async def view_member_tasks(callback: CallbackQuery, user: User):
         
         # Allow members to view their own tasks
         if not is_manager and user.id != member_id:
-            await callback.message.answer("You can only view your own tasks.")
+            await callback.message.answer(
+                language_manager.get_text("own_tasks_only", user.language_code)
+            )
             return
     
     # Pass is_manager=True to show_tasks for managers
-    await show_tasks(callback.message, team_id, member_id, user.role, is_manager=is_manager)
+    await show_tasks(callback.message, team_id, member_id, user.language_code, is_manager=is_manager)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("view_all_tasks_"))
@@ -897,7 +875,7 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
         
         await callback.answer()
 
-async def show_tasks(message, team_id: int, member_id: int | None, user_role: UserRole, is_manager: bool = False):
+async def show_tasks(message, team_id: int, member_id: int | None, language_code: str, is_manager: bool = False):
     async with async_session() as session:
         # Build query based on user role and member_id
         query = select(Task).where(Task.team_id == team_id)
@@ -906,7 +884,7 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
         if member_id is not None:
             query = query.where(Task.assignee_id == member_id)
         # If viewing all tasks (member_id is None) and user is not a manager
-        elif user_role != UserRole.MANAGER:
+        elif not is_manager:
             query = query.where(Task.assignee_id == message.from_user.id)
         
         result = await session.execute(query)
@@ -914,21 +892,21 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
         
         if not tasks:
             await message.answer(
-                language_manager.get_text("no_tasks", message.from_user.language_code)
+                language_manager.get_text("no_tasks", language_code)
             )
             return
         
         # Send header first
         await message.answer(
-            language_manager.get_text("tasks_header", message.from_user.language_code)
+            language_manager.get_text("tasks_header", language_code)
         )
         
         # Process each task
         for task in tasks:
             remaining_days = get_remaining_days(task.due_date) if task.due_date else None
-            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", message.from_user.language_code)
+            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", language_code)
             if remaining_days is not None:
-                due_date_str += f" ({remaining_days} {language_manager.get_text('days', message.from_user.language_code)})"
+                due_date_str += f" ({remaining_days} {language_manager.get_text('days', language_code)})"
             
             # Map database status to display status
             status_map = {
@@ -947,17 +925,17 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
             assignee_query = select(User).where(User.id == task.assignee_id)
             assignee_result = await session.execute(assignee_query)
             assignee = assignee_result.scalar_one_or_none()
-            assignee_name = f"{assignee.first_name} {assignee.last_name} (@{assignee.username})" if assignee else language_manager.get_text("unknown", message.from_user.language_code)
+            assignee_name = f"{assignee.first_name} {assignee.last_name} (@{assignee.username})" if assignee else language_manager.get_text("unknown", language_code)
             
             # Format task text with proper translations
             task_text = language_manager.get_text(
                 "task_item",
-                message.from_user.language_code,
+                language_code,
                 task_id=str(task.id),
                 assignee=assignee_name,
                 description=task.description,
                 due_date=due_date_str,
-                status=f"{status_emoji} {language_manager.get_text(status_map[task.status.lower()], message.from_user.language_code)}"
+                status=f"{status_emoji} {language_manager.get_text(status_map[task.status.lower()], language_code)}"
             )
             
             # Create status update buttons for each task
@@ -976,7 +954,7 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
                 next_status = status_flow[task.status.lower()]
                 button_text = language_manager.get_text(
                     status_map[next_status],
-                    message.from_user.language_code
+                    language_code
                 )
                 buttons.append(
                     InlineKeyboardButton(
@@ -989,7 +967,7 @@ async def show_tasks(message, team_id: int, member_id: int | None, user_role: Us
             if is_manager:
                 buttons.append(
                     InlineKeyboardButton(
-                        text=language_manager.get_text("delete_task", message.from_user.language_code),
+                        text=language_manager.get_text("delete_task", language_code),
                         callback_data=f"delete_task_{task.id}"
                     )
                 )
@@ -1065,13 +1043,48 @@ async def update_task_status(callback: CallbackQuery, user: User):
             await session.commit()
             
             # Send notifications based on who made the change
-            if notification_system:
-                if is_manager and assignee:
-                    # If manager changed status, notify assignee
-                    await notification_system.notify_status_change(task, assignee, user, new_status)
-                elif not is_manager and manager:
-                    # If assignee changed status, notify manager
-                    await notification_system.notify_status_change(task, user, manager, new_status)
+            if is_manager and assignee:
+                # If manager changed status, notify assignee
+                await callback.bot.send_message(
+                    chat_id=assignee.telegram_id,
+                    text=language_manager.get_text(
+                        "status_change_assignee",
+                        assignee.language_code,
+                        task_id=str(task.id),
+                        assignee_name=f"{user.first_name} {user.last_name} (@{user.username})",
+                        description=task.description,
+                        due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", assignee.language_code),
+                        new_status=language_manager.get_text(
+                            {
+                                "pending": "status_pending",
+                                "in_progress": "status_in_progress",
+                                "done": "status_done"
+                            }[new_status],
+                            assignee.language_code
+                        )
+                    )
+                )
+            elif not is_manager and manager:
+                # If assignee changed status, notify manager
+                await callback.bot.send_message(
+                    chat_id=manager.telegram_id,
+                    text=language_manager.get_text(
+                        "status_change_manager",
+                        manager.language_code,
+                        task_id=str(task.id),
+                        assignee_name=f"{user.first_name} {user.last_name} (@{user.username})",
+                        description=task.description,
+                        due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", manager.language_code),
+                        new_status=language_manager.get_text(
+                            {
+                                "pending": "status_pending",
+                                "in_progress": "status_in_progress",
+                                "done": "status_done"
+                            }[new_status],
+                            manager.language_code
+                        )
+                    )
+                )
             
             # Map database status to display status
             status_map = {

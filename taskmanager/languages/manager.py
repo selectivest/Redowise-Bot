@@ -32,7 +32,9 @@ class LanguageManager:
     
     def get_text(self, key: str, lang_code: str, **kwargs) -> str:
         """Get translated text for the given key and language."""
+        print(f"Debug: Getting text for key '{key}' in language '{lang_code}'")  # Debug log
         if lang_code not in self._translations:
+            print(f"Debug: Language '{lang_code}' not found, falling back to English")  # Debug log
             lang_code = 'en'  # Fallback to English
         
         translations = self._translations[lang_code]
@@ -40,6 +42,7 @@ class LanguageManager:
         
         # If translation not found in current language, try English
         if text is None and lang_code != 'en':
+            print(f"Debug: Translation for key '{key}' not found in '{lang_code}', trying English")  # Debug log
             text = self._translations['en'].get(key)
         
         # If still not found, return the key itself

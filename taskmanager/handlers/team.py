@@ -198,75 +198,76 @@ async def process_member_username(message: Message, state: FSMContext, user: Use
 @router.callback_query(TeamStates.waiting_for_member_role)
 async def process_team_selection(callback: CallbackQuery, state: FSMContext):
     try:
-        team_id = int(callback.data.split('_')[1])
-        data = await state.get_data()
-        
+        # Get user from database to ensure we have the correct language code
         async with async_session() as session:
-            # Get team and member info
+            query = select(User).where(User.telegram_id == callback.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", 'en')
+                )
+                return
+                
+            team_id = int(callback.data.split('_')[1])
+            data = await state.get_data()
+            
+            # Get team info
             team_query = select(Team).where(Team.id == team_id)
             team_result = await session.execute(team_query)
             team = team_result.scalar_one_or_none()
             
+            if not team:
+                await callback.message.answer(
+                    language_manager.get_text("team_not_found", user.language_code)
+                )
+                return
+            
+            # Get member info using the stored new_member_id
             member_query = select(User).where(User.id == data['new_member_id'])
             member_result = await session.execute(member_query)
             member = member_result.scalar_one_or_none()
             
-            if not team or not member:
+            if not member:
                 await callback.message.answer(
-                    language_manager.get_text("error_occurred", callback.from_user.language_code)
+                    language_manager.get_text("user_not_found", user.language_code)
                 )
-                await state.clear()
                 return
             
-            # Check if member has started the bot
-            if not member.telegram_id:
-                await callback.message.answer(
-                    language_manager.get_text(
-                        "user_not_started_bot",
-                        callback.from_user.language_code,
-                        username=member.username
-                    )
-                )
-                await state.clear()
-                return
-            
-            # Generate unique invitation ID
+            # Create invitation
             invitation_id = str(uuid.uuid4())
-            
-            # Store invitation data
             pending_invitations[invitation_id] = {
                 'team_id': team_id,
                 'team_name': team.name,
                 'member_id': member.id,
                 'member_username': member.username,
-                'member_telegram_id': member.telegram_id,
-                'manager_id': callback.from_user.id,
-                'manager_username': callback.from_user.username
+                'manager_id': user.id
             }
             
-            # Create invitation message with accept/reject buttons
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=language_manager.get_text("accept", member.language_code),
-                        callback_data=f"accept_invite_{invitation_id}"
-                    ),
-                    InlineKeyboardButton(
-                        text=language_manager.get_text("reject", member.language_code),
-                        callback_data=f"reject_invite_{invitation_id}"
-                    )
-                ]
-            ])
-            
             try:
+                # Create inline keyboard for invitation response
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("accept", user.language_code),
+                            callback_data=f"accept_{invitation_id}"
+                        ),
+                        InlineKeyboardButton(
+                            text=language_manager.get_text("reject", user.language_code),
+                            callback_data=f"decline_{invitation_id}"
+                        )
+                    ]
+                ])
+                
                 # Send invitation to the member
                 await callback.bot.send_message(
                     chat_id=member.telegram_id,
                     text=language_manager.get_text(
                         "team_invitation",
-                        member.language_code,
+                        user.language_code,
                         team_name=team.name,
-                        manager_username=callback.from_user.username
+                        manager_username=user.username
                     ),
                     reply_markup=keyboard
                 )
@@ -275,7 +276,7 @@ async def process_team_selection(callback: CallbackQuery, state: FSMContext):
                 await callback.message.answer(
                     language_manager.get_text(
                         "invitation_sent",
-                        callback.from_user.language_code,
+                        user.language_code,
                         username=member.username
                     )
                 )
@@ -284,7 +285,7 @@ async def process_team_selection(callback: CallbackQuery, state: FSMContext):
                 await callback.message.answer(
                     language_manager.get_text(
                         "invitation_send_error",
-                        callback.from_user.language_code,
+                        user.language_code,
                         username=member.username
                     )
                 )
@@ -296,25 +297,47 @@ async def process_team_selection(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         print(f"Error processing team selection: {e}")  # For debugging
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code)
+            language_manager.get_text("error_occurred", user.language_code)
         )
         await state.clear()
         await callback.answer()
 
-@router.callback_query(F.data.startswith("accept_invite_"))
+@router.callback_query(F.data.startswith("accept_"))
 async def process_invitation_accept(callback: CallbackQuery):
     try:
-        invitation_id = callback.data.split('_')[2]
-        
-        if invitation_id not in pending_invitations:
-            await callback.message.answer(
-                language_manager.get_text("invalid_invitation", callback.from_user.language_code)
-            )
-            return
-        
-        invitation = pending_invitations[invitation_id]
-        
+        # Get user from database to ensure we have the correct language code
         async with async_session() as session:
+            query = select(User).where(User.telegram_id == callback.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", 'en')
+                )
+                return
+                
+            invitation_id = callback.data.split('_')[1]
+            
+            if invitation_id not in pending_invitations:
+                await callback.message.answer(
+                    language_manager.get_text("invalid_invitation", user.language_code)
+                )
+                return
+            
+            invitation = pending_invitations[invitation_id]
+            
+            # Get manager info for notification
+            manager_query = select(User).where(User.id == invitation['manager_id'])
+            manager_result = await session.execute(manager_query)
+            manager = manager_result.scalar_one_or_none()
+            
+            if not manager:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", user.language_code)
+                )
+                return
+            
             # Add member to team
             team_member = TeamMember(
                 team_id=invitation['team_id'],
@@ -328,20 +351,20 @@ async def process_invitation_accept(callback: CallbackQuery):
             await callback.message.edit_text(
                 language_manager.get_text(
                     "team_joined",
-                    callback.from_user.language_code,
+                    user.language_code,
                     team_name=invitation['team_name'],
-                    manager_username=invitation['manager_username']
+                    manager_username=manager.username
                 )
             )
             
             try:
                 # Notify manager
                 await callback.bot.send_message(
-                    chat_id=invitation['manager_id'],
+                    chat_id=manager.telegram_id,
                     text=language_manager.get_text(
                         "member_accepted",
-                        callback.from_user.language_code,
-                        username=invitation['member_username'],
+                        manager.language_code,  # Use manager's language preference
+                        username=user.username,
                         team_name=invitation['team_name']
                     )
                 )
@@ -352,52 +375,74 @@ async def process_invitation_accept(callback: CallbackQuery):
         del pending_invitations[invitation_id]
         await callback.answer()
     except Exception as e:
+        print(f"Error processing invitation acceptance: {e}")  # Debug log
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code)
+            language_manager.get_text("error_occurred", user.language_code)
         )
         await callback.answer()
 
-@router.callback_query(F.data.startswith("reject_invite_"))
+@router.callback_query(F.data.startswith("decline_"))
 async def process_invitation_reject(callback: CallbackQuery):
     try:
-        invitation_id = callback.data.split('_')[2]
-        
-        if invitation_id not in pending_invitations:
-            await callback.message.answer(
-                language_manager.get_text("invalid_invitation", callback.from_user.language_code)
-            )
-            return
-        
-        invitation = pending_invitations[invitation_id]
-        
-        # Notify member
-        await callback.message.edit_text(
-            language_manager.get_text(
-                "invitation_declined",
-                callback.from_user.language_code,
-                team_name=invitation['team_name']
-            )
-        )
-        
-        try:
-            # Notify manager
-            await callback.bot.send_message(
-                chat_id=invitation['manager_id'],
-                text=language_manager.get_text(
-                    "member_declined",
-                    callback.from_user.language_code,
-                    username=invitation['member_username'],
+        # Get user from database to ensure we have the correct language code
+        async with async_session() as session:
+            query = select(User).where(User.telegram_id == callback.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                await callback.message.answer(
+                    language_manager.get_text("error_occurred", 'en')
+                )
+                return
+                
+            invitation_id = callback.data.split('_')[1]
+            
+            if invitation_id not in pending_invitations:
+                await callback.message.answer(
+                    language_manager.get_text("invalid_invitation", user.language_code)
+                )
+                return
+            
+            invitation = pending_invitations[invitation_id]
+            
+            # Notify member
+            await callback.message.edit_text(
+                language_manager.get_text(
+                    "invitation_declined",
+                    user.language_code,
                     team_name=invitation['team_name']
                 )
             )
-        except Exception as e:
-            print(f"Error sending notification to manager: {e}")
+            
+            try:
+                # Get manager info for notification
+                manager_query = select(User).where(User.id == invitation['manager_id'])
+                manager_result = await session.execute(manager_query)
+                manager = manager_result.scalar_one_or_none()
+                
+                if manager:
+                    # Notify manager
+                    await callback.bot.send_message(
+                        chat_id=manager.telegram_id,
+                        text=language_manager.get_text(
+                            "member_declined",
+                            manager.language_code,  # Use manager's language preference
+                            username=invitation['member_username'],
+                            team_name=invitation['team_name']
+                        )
+                    )
+            except Exception as e:
+                print(f"Error sending notification to manager: {e}")
+                # Log the error but continue with the process
+                pass
         
         # Remove the invitation
         del pending_invitations[invitation_id]
         await callback.answer()
     except Exception as e:
+        print(f"Error processing invitation rejection: {e}")  # Debug log
         await callback.message.answer(
-            language_manager.get_text("error_occurred", callback.from_user.language_code)
+            language_manager.get_text("error_occurred", user.language_code)
         )
         await callback.answer() 
