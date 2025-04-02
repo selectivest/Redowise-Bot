@@ -1,0 +1,87 @@
+Metadata-Version: 2.4
+Name: taskmanager
+Version: 0.1.0
+Summary: A Telegram bot for managing tasks and teams
+Author-email: Your Name <your.email@example.com>
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: aiogram>=3.0.0
+Requires-Dist: sqlalchemy>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: black>=22.0; extra == "dev"
+Requires-Dist: isort>=5.0; extra == "dev"
+
+# Task Manager Telegram Bot
+
+A Telegram bot for managing tasks and teams. This bot allows users to create teams, add members, and manage tasks within teams.
+
+## Features
+
+- User Registration
+- Team Creation (Manager Only)
+- Adding Team Members (Manager Only)
+- Task Creation and Assignment
+- Task Viewing and Management
+
+## Setup
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Create a `.env` file in the root directory with your Telegram bot token:
+   ```
+   BOT_TOKEN=your_bot_token_here
+   ```
+4. Run the bot:
+   ```bash
+   python bot.py
+   ```
+
+## Usage
+
+### Basic Commands
+
+- `/start` - Register in the bot
+- `/help` - Show available commands
+- `/create_team` - Create a new team (Manager only)
+- `/add_member` - Add a member to your team (Manager only)
+- `/add_task` - Create a new task
+- `/tasks` - View your tasks
+
+### User Roles
+
+1. **Manager**
+   - Can create teams
+   - Can add members to teams
+   - Can assign tasks to any team member
+   - Can view all tasks in their teams
+
+2. **Member**
+   - Can create tasks for themselves
+   - Can view their assigned tasks
+   - Can be added to teams by managers
+
+## Database
+
+The bot uses SQLite with SQLAlchemy for data storage. The database file (`taskmanager.db`) will be created automatically when you first run the bot.
+
+## Project Structure
+
+```
+├── bot.py              # Main bot file
+├── config.py           # Configuration settings
+├── requirements.txt    # Project dependencies
+├── database/
+│   ├── connection.py   # Database connection setup
+│   └── models.py       # Database models
+├── handlers/
+│   ├── user.py         # User-related handlers
+│   ├── team.py         # Team-related handlers
+│   └── task.py         # Task-related handlers
+└── middlewares/
+    └── auth.py         # Authentication middleware
+``` 

@@ -3,18 +3,19 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.models import User, Team, TeamMember, Task, UserRole
-from database.connection import async_session
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from taskmanager.database.models import User, Team, TeamMember, Task, UserRole
+from taskmanager.database.connection import async_session
+from taskmanager.notifications import NotificationSystem
+from taskmanager.languages.manager import language_manager
+from taskmanager.handlers.states import TaskStates
 from datetime import datetime, timedelta, time
-from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
-from notifications import NotificationSystem
 import re
 import asyncio
 import calendar as cal
 from typing import Tuple, Optional
 from aiogram.filters.callback_data import CallbackData
-from languages.manager import language_manager
 
 router = Router()
 notification_system = None
@@ -44,6 +45,7 @@ class CustomCalendar:
             9: "September", 10: "October", 11: "November", 12: "December"
         }
         self.days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        self.today = datetime.now().date()
     
     async def start_calendar(self, year: int = None, month: int = None) -> InlineKeyboardMarkup:
         now = datetime.now()
@@ -96,7 +98,7 @@ class CustomCalendar:
                 ).pack()
             ),
             InlineKeyboardButton(
-                text=self.months[month],
+                text=f"{self.months[month]} {year}",
                 callback_data=CustomCalendarCallback(
                     action="ignore",
                     year=year,
@@ -126,9 +128,6 @@ class CustomCalendar:
             ).pack()) for day in self.days]
         )
 
-        # Get current date for highlighting today
-        today = now.date()
-        
         month_calendar = cal.monthcalendar(year, month)
         for week in month_calendar:
             row = []
@@ -144,10 +143,9 @@ class CustomCalendar:
                         ).pack()
                     ))
                 else:
-                    # Create date object for comparison
                     current_date = datetime(year, month, day).date()
                     
-                    if current_date < datetime.now().date():
+                    if current_date < self.today:
                         # Past dates
                         row.append(InlineKeyboardButton(
                             text="❌",
@@ -158,7 +156,7 @@ class CustomCalendar:
                                 day=day
                             ).pack()
                         ))
-                    elif current_date == today:
+                    elif current_date == self.today:
                         # Today's date
                         row.append(InlineKeyboardButton(
                             text="🔵",
@@ -397,82 +395,73 @@ async def process_deadline_selection(callback: CallbackQuery, state: FSMContext)
                 language_manager.get_text("calendar_instructions", callback.from_user.language_code),
                 reply_markup=keyboard
             )
-        else:
-            # Handle predefined deadlines
-            from datetime import datetime, timedelta
-            now = datetime.now()
-            print(f"Current time: {now}")  # Debug log
-            
-            try:
-                # Map deadline types to days
-                deadline_map = {
-                    'tomorrow': 1,
-                    'two_days': 2,
-                    'three_days': 3,
-                    'five_days': 5,
-                    'one_week': 7
-                }
-                
-                if deadline_type not in deadline_map:
-                    print(f"Invalid deadline type received: {deadline_type}")  # Debug log
-                    raise ValueError(f"Invalid deadline type: {deadline_type}")
-                
-                # Calculate due date based on the deadline type
-                days_to_add = deadline_map[deadline_type]
-                due_date = (now + timedelta(days=days_to_add)).replace(hour=23, minute=59, second=59)
-                
-                print(f"Calculated due date: {due_date}")  # Debug log
-                
-                await state.update_data(due_date=due_date)
-                
-                try:
-                    # Create task first
-                    async with async_session() as session:
-                        # Create the task
-                        task = Task(
-                            team_id=data['team_id'],
-                            assignee_id=data['assignee_id'],
-                            description=data['description'],
-                            due_date=due_date,
-                            status="pending",  # Use lowercase status
-                            creator_id=callback.from_user.id
-                        )
-                        session.add(task)
-                        await session.commit()
-                        
-                        # Get assignee info for notification
-                        assignee_query = select(User).where(User.id == data['assignee_id'])
-                        assignee_result = await session.execute(assignee_query)
-                        assignee = assignee_result.scalar_one_or_none()
-                        
-                        if assignee and notification_system:
-                            await notification_system.notify_new_task(task, assignee)
-                        
-                        # Send success message in user's language
-                        await callback.message.answer(
-                            language_manager.get_text("task_created", callback.from_user.language_code)
-                        )
-                        
-                        # Remove the keyboard after successful task creation
-                        await callback.message.delete_reply_markup()
-                        
-                except Exception as e:
-                    print(f"Error creating task in database: {e}")
-                    await callback.message.answer(
-                        language_manager.get_text("error_occurred", callback.from_user.language_code) +
-                        "\n" + language_manager.get_text("database_error", callback.from_user.language_code)
-                    )
-                finally:
-                    await state.clear()
-            
-            except Exception as e:
-                print(f"Error in deadline selection: {e}")
-                await callback.message.answer(
-                    language_manager.get_text("error_occurred", callback.from_user.language_code)
+            return
+        
+        # Handle predefined deadlines
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        print(f"Current time: {now}")  # Debug log
+        
+        # Map deadline types to days
+        deadline_map = {
+            'tomorrow': 1,
+            'two_days': 2,
+            'three_days': 3,
+            'five_days': 5,
+            'one_week': 7
+        }
+        
+        if deadline_type not in deadline_map:
+            print(f"Invalid deadline type received: {deadline_type}")  # Debug log
+            raise ValueError(f"Invalid deadline type: {deadline_type}")
+        
+        # Calculate due date based on the deadline type
+        days_to_add = deadline_map[deadline_type]
+        due_date = (now + timedelta(days=days_to_add)).replace(hour=23, minute=59, second=59)
+        
+        print(f"Calculated due date: {due_date}")  # Debug log
+        
+        await state.update_data(due_date=due_date)
+        
+        try:
+            # Create task first
+            async with async_session() as session:
+                # Create the task
+                task = Task(
+                    team_id=data['team_id'],
+                    assignee_id=data['assignee_id'],
+                    description=data['description'],
+                    due_date=due_date,
+                    status="pending",  # Use lowercase status
+                    creator_id=callback.from_user.id
                 )
-                await state.clear()
-            finally:
-                await callback.answer()
+                session.add(task)
+                await session.commit()
+                
+                # Get assignee info for notification
+                assignee_query = select(User).where(User.id == data['assignee_id'])
+                assignee_result = await session.execute(assignee_query)
+                assignee = assignee_result.scalar_one_or_none()
+                
+                if assignee and notification_system:
+                    await notification_system.notify_new_task(task, assignee)
+                
+                # Send success message in user's language
+                await callback.message.answer(
+                    language_manager.get_text("task_created", callback.from_user.language_code)
+                )
+                
+                # Remove the keyboard after successful task creation
+                await callback.message.delete_reply_markup()
+                
+        except Exception as e:
+            print(f"Error creating task in database: {e}")
+            await callback.message.answer(
+                language_manager.get_text("error_occurred", callback.from_user.language_code) +
+                "\n" + language_manager.get_text("database_error", callback.from_user.language_code)
+            )
+        finally:
+            await state.clear()
         
     except Exception as e:
         print(f"Error in deadline selection: {e}")
@@ -480,6 +469,7 @@ async def process_deadline_selection(callback: CallbackQuery, state: FSMContext)
             language_manager.get_text("error_occurred", callback.from_user.language_code)
         )
         await state.clear()
+    finally:
         await callback.answer()
 
 @router.callback_query(TaskStates.waiting_for_calendar_selection)

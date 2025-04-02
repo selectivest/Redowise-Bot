@@ -3,12 +3,12 @@ from aiogram.filters import Command
 from aiogram.types import Message, BotCommand, BotCommandScopeDefault, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.models import User, UserRole, Team, TeamMember, Task
-from database.connection import async_session
 from sqlalchemy import select
-from handlers.team import TeamStates
-from handlers.task import process_task_description, TaskStates
-from languages.manager import language_manager
+from taskmanager.database.models import User, Team, TeamMember, Task, UserRole
+from taskmanager.database.connection import async_session
+from taskmanager.languages.manager import language_manager
+from taskmanager.handlers.team import TeamStates
+from taskmanager.handlers.task import process_task_description, TaskStates
 
 router = Router()
 

@@ -3,11 +3,11 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.models import User, Team, TeamMember
-from database.connection import async_session
 from sqlalchemy import select
+from taskmanager.database.models import User, Team, TeamMember, UserRole
+from taskmanager.database.connection import async_session
+from taskmanager.languages.manager import language_manager
 import uuid
-from languages.manager import language_manager
 
 router = Router()
 
