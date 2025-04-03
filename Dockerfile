@@ -30,7 +30,7 @@ RUN pip3 install .
 # Create a non-root user
 # RUN useradd -m botuser && chown -R botuser:botuser /app
 # USER botuser
-
+WORKDIR /app/taskmanager
 # Command to run the bot
-CMD ["python",  "taskmanager/bot.py"] 
+CMD ["python",  "bot.py"] 
 #CMD ["tail", "-f", "/dev/null"] 
