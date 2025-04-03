@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip3 install -r requirements.txt
+# RUN pip3 install -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
@@ -32,4 +32,5 @@ COPY . .
 # USER botuser
 
 # Command to run the bot
-CMD ["python", "-m", "taskmanager"] 
+# CMD ["python", "-m", "taskmanager"] 
+CMD ["tail", "-f", "/dev/null"] 
