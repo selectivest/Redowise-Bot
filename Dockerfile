@@ -18,19 +18,15 @@ RUN apt-get update && apt-get install -y \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first to leverage Docker cache
-# COPY requirements.txt .
-
-# Install Python dependencies
-# RUN pip3 install -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
 RUN pip3 install .
+RUN pip3 install -r requirements.txt
+
 # Create a non-root user
 # RUN useradd -m botuser && chown -R botuser:botuser /app
 # USER botuser
-WORKDIR /app/taskmanager
 # Command to run the bot
-#CMD ["python",  "bot.py"] 
-CMD ["tail", "-f", "/dev/null"] 
+CMD ["python",  "taskmanager/bot.py"] 
+#CMD ["tail", "-f", "/dev/null"] 
