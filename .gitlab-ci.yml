@@ -27,7 +27,7 @@ redowise-app-deploy:
   image: docker:24.0.5
   variables:
     SSH: $PRODUCTION_SSH_PATH
-    DEPLOY_PATH: '/home/deployer/projects/redowise'
+    DEPLOY_PATH: '/home/deployer/redowise'
     TAG_COMMIT: "$CI_REGISTRY_IMAGE/redowise:latest"
     
   stage: deploy
