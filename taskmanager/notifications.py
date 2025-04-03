@@ -7,6 +7,7 @@ from sqlalchemy import select
 from collections import defaultdict
 import random
 from taskmanager.languages.manager import language_manager
+from sqlalchemy.orm import joinedload
 
 class NotificationSystem:
     def __init__(self, bot: Bot):
@@ -59,28 +60,35 @@ class NotificationSystem:
 
     async def notify_new_task(self, task: Task, assignee: User):
         """Send notification when a new task is assigned"""
-        # Format due date
-        due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", assignee.language_code)
-        
-        # Map status for notification
-        status_map = {
-            "pending": "status_pending",
-            "in_progress": "status_in_progress",
-            "done": "status_done"
-        }
-        
-        # Get translated status
-        status = language_manager.get_text(status_map[task.status], assignee.language_code)
-        
-        message = language_manager.get_text(
-            "new_task",
-            assignee.language_code,
-            task_id=str(task.id),
-            description=task.description,
-            due_date=due_date_str,
-            status=status
-        )
-        await self.send_notification(assignee.telegram_id, message, assignee.language_code)
+        try:
+            # Format due date
+            due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", assignee.language_code)
+            
+            # Map status for notification
+            status_map = {
+                "pending": "status_pending",
+                "in_progress": "status_in_progress",
+                "done": "status_done"
+            }
+            
+            # Get translated status
+            status = language_manager.get_text(status_map[task.status], assignee.language_code)
+            
+            # Log the values being passed
+            print(f"New task notification values - task_id: {task.id}, team_name: {task.team.name if task.team else 'None'}, description: {task.description}, due_date: {due_date_str}, status: {status}")
+            
+            message = language_manager.get_text(
+                "new_task",
+                assignee.language_code,
+                team_name=task.team.name if task.team else language_manager.get_text("unknown", assignee.language_code),
+                task_id=str(task.id),
+                description=task.description,
+                due_date=due_date_str,
+                status=status
+            )
+            await self.send_notification(assignee.telegram_id, message, assignee.language_code)
+        except Exception as e:
+            print(f"Error in notify_new_task: {e}")
 
     async def notify_status_change(self, task: Task, assignee: User, manager: User, new_status: str):
         """Send notification when task status changes"""
@@ -101,10 +109,14 @@ class NotificationSystem:
             # Get translated status
             translated_status = language_manager.get_text(status_map[new_status], assignee.language_code)
             
+            # Log the values being passed
+            print(f"Notification values - task_id: {task.id}, team_name: {task.team.name if task.team else 'None'}, description: {task.description}, due_date: {due_date_str}, status: {translated_status}")
+            
             # Format notification text
             notification_text = language_manager.get_text(
                 template,
                 assignee.language_code,
+                team_name=task.team.name if task.team else language_manager.get_text("unknown", assignee.language_code),
                 task_id=str(task.id),
                 assignee_name=f"{manager.first_name} {manager.last_name} (@{manager.username})",
                 description=task.description,
@@ -230,7 +242,7 @@ class NotificationSystem:
                 # Get all users with open tasks
                 async with async_session() as session:
                     # Get all tasks that are not done
-                    query = select(Task).where(Task.status != "done")
+                    query = select(Task).where(Task.status != "done").options(joinedload(Task.team))
                     result = await session.execute(query)
                     tasks = result.scalars().all()
                     
@@ -296,6 +308,7 @@ class NotificationSystem:
                                     task_text = language_manager.get_text(
                                         "task_item",
                                         user.language_code,
+                                        team_name=task.team.name if task.team else language_manager.get_text("unknown", user.language_code),
                                         task_id=str(task.id),
                                         assignee=assignee_name,
                                         description=task.description,

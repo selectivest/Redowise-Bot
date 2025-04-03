@@ -69,13 +69,13 @@ translations: Dict[str, str] = {
     "status_completed": "مكتملة",
     
     # Notifications
-    "new_task": "📝 تم تعيين مهمة جديدة!\n\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة: قيد الانتظار",
-    "status_change_manager": "🔄 تم تحديث حالة المهمة!\n\n🔹 معرف المهمة: {task_id}\n👤 المسؤول: {assignee_name}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة الجديدة: {new_status}",
-    "status_change_assignee": "🔄 تم تحديث حالة مهمتك!\n\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة الجديدة: {new_status}",
-    "task_deleted": "🗑️ تم حذف المهمة\n\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة: {status}\nتم الحذف بواسطة: {deleted_by}",
+    "new_task": "📝 تم تعيين مهمة جديدة!\n\n👥 الفريق: {team_name}\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\n🔄 الحالة: قيد الانتظار",
+    "status_change_manager": "🔄 تم تحديث حالة المهمة!\n\n👥 الفريق: {team_name}\n🔹 معرف المهمة: {task_id}\n👤 المسؤول: {assignee_name}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\n🔄 الحالة الجديدة: {new_status}",
+    "status_change_assignee": "🔄 تم تحديث حالة مهمتك بواسطة المدير\n\n👥 الفريق: {team_name}\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\n🔄 الحالة الجديدة: {new_status}",
+    "task_deleted": "🗑️ تم حذف المهمة\n\n👥 الفريق: {team_name}\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\n🔄 الحالة: {status}\nتم الحذف بواسطة: {deleted_by}",
     "due_date_reminder": "⚠️ موعد استحقاق المهمة غداً!\n\n🔹 معرف المهمة: {task_id}\n📄 الوصف: {description}\n📅 تاريخ الاستحقاق: {due_date}\nالحالة: {status}",
     "daily_tasks": "📋 مهامك اليوم:\n\n{tasks}",
-    "task_item": "🔹 معرف المهمة: {task_id}\n\n👤 المسؤول: {assignee}\n\n📄 الوصف: {description}\n\n📅 تاريخ الاستحقاق: {due_date}\n\nالحالة: {status}\n\n➖➖➖➖➖➖➖➖\n",
+    "task_item": "👥 الفريق: {team_name}\n\n🔹 معرف المهمة: {task_id}\n\n👤 المسؤول: {assignee}\n\n📄 الوصف:\n{description}\n\n📅 تاريخ الاستحقاق: {due_date}\n\n📝 الحالة: {status}\n\n➖➖➖➖➖➖➖➖\n",
     "queued_notifications": "📋 إشعاراتك الجديدة:\n\n{notifications}",
     
     # Errors

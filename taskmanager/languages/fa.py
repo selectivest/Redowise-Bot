@@ -69,13 +69,13 @@ translations: Dict[str, str] = {
     "status_completed": "تکمیل شده",
     
     # Notifications
-    "new_task": "📝 وظیفه جدید تعیین شد!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: در انتظار",
-    "status_change_manager": "🔄 وضعیت وظیفه به‌روزرسانی شد!\n\n🔹 شناسه وظیفه: {task_id}\n👤 مسئول: {assignee_name}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت جدید: {new_status}",
-    "status_change_assignee": "🔄 وضعیت وظیفه شما به‌روزرسانی شد!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت جدید: {new_status}",
-    "task_deleted": "🗑️ وظیفه حذف شد\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}\nحذف شده توسط: {deleted_by}",
+    "new_task": "📝 وظیفه جدید تعیین شد!\n\n👥 تیم: {team_name}\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\n🔄 وضعیت: در انتظار",
+    "status_change_manager": "🔄 وضعیت وظیفه به‌روزرسانی شد!\n\n👥 تیم: {team_name}\n🔹 شناسه وظیفه: {task_id}\n👤 مسئول: {assignee_name}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\n🔄 وضعیت جدید: {new_status}",
+    "status_change_assignee": "🔄 وضعیت وظیفه شما توسط مدیر به‌روزرسانی شد!\n\n👥 تیم: {team_name}\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\n🔄 وضعیت جدید: {new_status}",
+    "task_deleted": "🗑️ وظیفه حذف شد\n\n👥 تیم: {team_name}\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\n🔄 وضعیت: {status}\nحذف شده توسط: {deleted_by}",
     "due_date_reminder": "⚠️ موعد استحقاق وظیفه فردا است!\n\n🔹 شناسه وظیفه: {task_id}\n📄 توضیحات: {description}\n📅 تاریخ موعد: {due_date}\nوضعیت: {status}",
     "daily_tasks": "📋 وظایف امروز شما:\n\n{tasks}",
-    "task_item": "🔹 شناسه وظیفه:\n{task_id}\n\n👤 مسئول:\n{assignee}\n\n📄 توضیحات:\n{description}\n\n📅 تاریخ سررسید:\n{due_date}\n\nوضعیت:\n{status}\n\n➖➖➖➖➖➖➖➖\n",
+    "task_item": "👥 تیم: {team_name}\n\n🔹 شناسه وظیفه: {task_id}\n\n👤 مسئول: {assignee}\n\n📄 توضیحات:\n{description}\n\n📅 تاریخ سررسید: {due_date}\n\n📝 وضعیت: {status}\n\n➖➖➖➖➖➖➖➖\n",
     "queued_notifications": "📋 اعلان‌های جدید شما:\n\n{notifications}",
     
     # Errors

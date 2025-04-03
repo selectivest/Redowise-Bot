@@ -67,13 +67,13 @@ translations: Dict[str, str] = {
     "status_completed": "Done",
     
     # Notifications
-    "new_task": "📝 New task assigned!\n\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\nStatus: To Do",
-    "status_change_manager": "🔄 Task status updated!\n\n🔹 Task ID: {task_id}\n👤 Assignee: {assignee_name}\n📄 Description: {description}\n📅 Due Date: {due_date}\nNew Status: {new_status}",
-    "status_change_assignee": "🔄 Your task status has been updated!\n\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\nNew Status: {new_status}",
-    "task_deleted": "🗑️ Task deleted\n\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\nStatus: {status}\nDeleted by: {deleted_by}",
+    "new_task": "📝 New task assigned!\n\n👥 Team: {team_name}\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\n🔄 Status: To Do",
+    "status_change_manager": "🔄 Task status updated!\n\n👥 Team: {team_name}\n🔹 Task ID: {task_id}\n👤 Assignee: {assignee_name}\n📄 Description: {description}\n📅 Due Date: {due_date}\n🔄 New Status: {new_status}",
+    "status_change_assignee": "🔄 Your task status has been updated by your manager!\n\n👥 Team: {team_name}\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\n🔄 New Status: {new_status}",
+    "task_deleted": "🗑️ Task deleted\n\n👥 Team: {team_name}\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\n🔄 Status: {status}\nDeleted by: {deleted_by}",
     "due_date_reminder": "⚠️ Task due tomorrow!\n\n🔹 Task ID: {task_id}\n📄 Description: {description}\n📅 Due Date: {due_date}\nStatus: {status}",
     "daily_tasks": "📋 Your tasks for today:\n\n{tasks}",
-    "task_item": "🔹 Task ID: {task_id}\n\n👤 Assignee: {assignee}\n\n📄 Description: {description}\n\n📅 Due Date: {due_date}\n\nSTATUS: {status}\n\n➖➖➖➖➖➖➖➖\n",
+    "task_item": "👥 Team: {team_name}\n\n🔹 Task ID: {task_id}\n\n👤 Assignee: {assignee}\n\n📄 Description:\n{description}\n\n📅 Due Date: {due_date}\n\n📝 Status: {status}\n\n➖➖➖➖➖➖➖➖\n",
     "queued_notifications": "📋 Your new notifications:\n\n{notifications}",
     
     # Errors
