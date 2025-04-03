@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
     liblapack-dev \
     libffi-dev \
     python3-dev \
+    pkg-config \
+    cmake \
+    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
