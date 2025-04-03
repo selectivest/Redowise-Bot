@@ -10,7 +10,7 @@ redowise-app-build:
   stage: build
     
   before_script:
-    - apk add --no-cache python3 py3-pip build-base gfortran lapack-dev libffi-dev gcc pkg-config cmake 
+    - apk add --no-cache python3 py3-pip build-base gfortran lapack-dev libffi-dev gcc pkgconf cmake openblas-dev
     - pip3 install --upgrade pip
   services:
     - name: docker:24.0.5-dind
