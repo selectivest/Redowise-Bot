@@ -1,46 +1,49 @@
-image: python:3.11-slim
 
-stages:
-  - test
-  - build
-  - deploy
+######################################## DEVELOP ###############################################
 
-variables:
-  DOCKER_HOST: tcp://docker:2375
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: ""
 
-before_script:
-  - pip install -r requirements.txt
 
-test:
-  stage: test
-  script:
-    - python -m pytest
-
-build:
+redowise-app-build:
+  image: docker:24.0.5
+  variables:
+    TAG_COMMIT: "$CI_REGISTRY_IMAGE/redowise:latest"
   stage: build
-  image: docker:latest
   services:
-    - docker:dind
+    - name: docker:24.0.5-dind
   script:
-    - docker build -t taskmanager-bot .
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - docker build  -t "$TAG_COMMIT" .
+    - docker push "$TAG_COMMIT"
   only:
     - main
 
-deploy:
+
+
+redowise-app-deploy:
+  image: docker:24.0.5
+  variables:
+    SSH: $PRODUCTION_SSH_PATH
+    DEPLOY_PATH: '/home/deployer/projects/redowise'
+    TAG_COMMIT: "$CI_REGISTRY_IMAGE/redowise:latest"
+    
   stage: deploy
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache openssh-client
   script:
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
     - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - ssh-add <(echo "$SSH_PRIVATE_KEY_PRODUCTION")
     - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-    - chmod 644 ~/.ssh/known_hosts
-    - scp docker-compose.yml $SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/
-    - ssh $SERVER_USER@$SERVER_HOST "cd $DEPLOY_PATH && docker-compose pull && docker-compose up -d"
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - |
+      ssh $SSH -p 1998 "
+        cd $DEPLOY_PATH
+        docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+        docker-compose pull && docker-compose down
+        docker-compose up -d
+        docker system prune -a --force"
+
   only:
-    - main 
+    - main
+
+
+
+
