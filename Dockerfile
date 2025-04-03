@@ -1,6 +1,5 @@
 # Use Python 3.11 slim image as base
-FROM python:3.11-slim
-
+FROM python:3.11
 # Set working directory
 WORKDIR /app
 
@@ -13,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install -r requirements.txt
+RUN pip3 install -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
