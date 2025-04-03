@@ -19,18 +19,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+# COPY requirements.txt .
 
 # Install Python dependencies
 # RUN pip3 install -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
-
+RUN pip3 install .
 # Create a non-root user
 # RUN useradd -m botuser && chown -R botuser:botuser /app
 # USER botuser
 
 # Command to run the bot
-# CMD ["python", "-m", "taskmanager"] 
-CMD ["tail", "-f", "/dev/null"] 
+CMD ["python",  "taskmanager/bot.py"] 
+#CMD ["tail", "-f", "/dev/null"] 
