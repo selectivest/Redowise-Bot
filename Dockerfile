@@ -32,5 +32,5 @@ RUN pip3 install .
 # USER botuser
 WORKDIR /app/taskmanager
 # Command to run the bot
-CMD ["python",  "bot.py"] 
-#CMD ["tail", "-f", "/dev/null"] 
+#CMD ["python",  "bot.py"] 
+CMD ["tail", "-f", "/dev/null"] 
