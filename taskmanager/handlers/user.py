@@ -35,7 +35,8 @@ def get_keyboard_menu(user: User = None) -> ReplyKeyboardMarkup:
         [KeyboardButton(text=language_manager.get_text("add_task", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("add_member", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("create_team", user.language_code))],
-        [KeyboardButton(text=language_manager.get_text("view_tasks", user.language_code))]
+        [KeyboardButton(text=language_manager.get_text("view_tasks", user.language_code))],
+        [KeyboardButton(text=language_manager.get_text("help", user.language_code))]
     ]
     
     return ReplyKeyboardMarkup(
@@ -114,7 +115,8 @@ async def process_language_selection(callback: CallbackQuery):
                 [KeyboardButton(text=language_manager.get_text("add_task", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("add_member", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("create_team", lang_code))],
-                [KeyboardButton(text=language_manager.get_text("view_tasks", lang_code))]
+                [KeyboardButton(text=language_manager.get_text("view_tasks", lang_code))],
+                [KeyboardButton(text=language_manager.get_text("help", lang_code))]
             ]
             
             await callback.message.answer(
@@ -156,38 +158,7 @@ async def cmd_menu(message: Message, user: User):
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, user: User):
-    help_text = """
-🤖 *Task Manager Bot Help*
-
-*Basic Commands:*
-/start - Start the bot and register
-/menu - Show main menu
-/help - Show this help message
-/show_keyboard - Show keyboard menu
-/hide_keyboard - Hide keyboard menu
-
-*User Roles:*
-👨‍💼 *Manager*
-• Can create and manage teams
-• Can add members to teams
-• Can assign tasks to any team member
-• Can view all tasks in their teams
-
-👥 *Member*
-• Can create tasks for themselves
-• Can view their assigned tasks
-• Can be added to teams by managers
-
-*How to Use:*
-1. Start with /start to register
-2. Use the keyboard menu to:
-   • Create a team
-   • Add team members
-   • Create tasks
-   • View tasks
-
-Need more help? Use /menu to access the main menu.
-"""
+    help_text = language_manager.get_text("help", user.language_code)
     await message.answer(help_text, parse_mode="Markdown")
 
 @router.message(F.text)

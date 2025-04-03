@@ -6,6 +6,7 @@ translations: Dict[str, str] = {
     "select_language": "Please select your preferred language:",
     "language_changed": "Language has been changed to English",
     "main_menu": "🎯 Main Menu\n\nSelect an option:",
+    "help": "🤖 *Task Management Bot Help*\n\n*Main Features* 🎯\n• Create and manage teams\n• Assign tasks to team members\n• Track task status\n• Get notifications for updates\n• Support for multiple languages\n\n*Available Commands* 📝\n• /add_task - Create a new task\n• /add_member - Add a member to your team\n• /create_team - Create a new team\n• /view_tasks - View all tasks\n• /help - Show this help message\n• /menu - Show main menu\n• /language - Change language\n\n*Task Status Flow* 🔄\n1. 📝 To Do (Pending)\n2. 🔄 In Progress\n3. ✅ Done\n\n*Role-Based Permissions* 👥\n*Managers:*\n• Create and delete tasks\n• Add/remove team members\n• Change task status\n• View all team tasks\n\n*Members:*\n• View assigned tasks\n• Update task status (up to Done)\n• Receive notifications\n\n*Notifications* 🔔\n• New task assignments\n• Status changes\n• Task deletions\n• Due date reminders\n\n*Need More Help?* 💡\nContact your team manager or use /menu to access more options.",
     
     # Menu
     "create_team": "Create Team",
