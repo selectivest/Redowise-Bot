@@ -13,14 +13,14 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
 
 # Create a non-root user
-RUN useradd -m botuser && chown -R botuser:botuser /app
-USER botuser
+# RUN useradd -m botuser && chown -R botuser:botuser /app
+# USER botuser
 
 # Command to run the bot
 CMD ["python", "-m", "taskmanager"] 
