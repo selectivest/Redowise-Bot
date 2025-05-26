@@ -9,6 +9,15 @@ import random
 from taskmanager.languages.manager import language_manager
 from sqlalchemy.orm import joinedload
 
+# Global notification system instance
+notification_system = None
+
+def init_notification_system(bot: Bot):
+    """Initialize the notification system with the bot instance"""
+    global notification_system
+    notification_system = NotificationSystem(bot)
+    return notification_system
+
 class NotificationSystem:
     def __init__(self, bot: Bot):
         self.bot = bot

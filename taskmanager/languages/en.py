@@ -105,6 +105,21 @@ translations: Dict[str, str] = {
     "update_own_tasks": "You can only update your own tasks.",
     "completed_tasks_locked": "Only managers can change the status of completed tasks.",
     "status_limit": "You can only change task status to 'In Progress' or 'Done'.",
+    "unsupported_message_type": "Sorry, this type of message is not supported. Please send text, photo, video, or voice message.",
+    
+    # Multiple Messages Task Description
+    "description_preview": "📝 *Current Task Description:*\n\n{description}\n\nYou can continue adding more messages or click 'Finish Description' when done.",
+    "finish_description": "✅ Finish Description",
+    "empty_description": "Please add at least one message to the task description before finishing.",
+    "continue_adding": "Continue adding messages to your task description. You can send:\n• Text messages\n• Voice messages (will be transcribed)\n• Photos (with captions)\n• Videos (with captions)\n\nClick 'Finish Description' when you're done.",
+    "description_updated": "✅ Description updated! You can continue adding more messages or click 'Finish Description' when done.",
+    "media_added": "✅ Media added to task! You can continue adding more messages or click 'Finish Description' when done.",
+    
+    # Voice Transcription Messages
+    "processing_voice": "🎤 Processing voice message...",
+    "voice_transcribed": "✅ Voice message transcribed successfully!",
+    "transcription_failed": "❌ Failed to transcribe voice message. Please try again or send a text message.",
+    "transcription_not_available": "❌ Voice transcription service is not available. Please send a text message instead.",
     
     # Menu Items
     "add_task": "📝 Add Task",

@@ -64,6 +64,11 @@ class Task(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="pending")  # Values: pending, in_progress, done
     
+    # Media fields
+    media_type = Column(String, nullable=True)  # Values: photo, video, voice, None
+    media_file_id = Column(String, nullable=True)  # Telegram file_id for the media
+    media_caption = Column(String, nullable=True)  # Caption for media if any
+    
     # Relationships
     team = relationship("Team", back_populates="tasks")
     creator = relationship("User", foreign_keys=[creator_id], back_populates="created_tasks")

@@ -17,13 +17,10 @@ import calendar as cal
 from typing import Tuple, Optional
 from aiogram.filters.callback_data import CallbackData
 from sqlalchemy.orm import joinedload
+from taskmanager.services.transcription import transcription_service
 
 router = Router()
 notification_system = None
-
-def init_notification_system(bot):
-    global notification_system
-    notification_system = NotificationSystem(bot)
 
 class TaskStates(StatesGroup):
     waiting_for_team_selection = State()
@@ -340,7 +337,7 @@ async def process_member_selection(callback: CallbackQuery, state: FSMContext):
             
             await state.set_state(TaskStates.waiting_for_task_description)
             await callback.message.answer(
-                language_manager.get_text("enter_task_description", user.language_code)
+                language_manager.get_text("continue_adding", user.language_code)
             )
             await callback.answer()
     except Exception as e:
@@ -353,9 +350,196 @@ async def process_member_selection(callback: CallbackQuery, state: FSMContext):
 @router.message(TaskStates.waiting_for_task_description)
 async def process_task_description(message: Message, state: FSMContext, user: User):
     try:
-        # Clear any existing description
-        await state.update_data(description=message.text)
-        
+        # Get current state data
+        current_data = await state.get_data()
+        current_description = current_data.get('description', '')
+        current_media_type = current_data.get('media_type')
+        current_media_file_id = current_data.get('media_file_id')
+        current_media_caption = current_data.get('media_caption', '')
+
+        # Handle different types of messages
+        if message.voice:
+            try:
+                # For voice messages, we'll store the file_id and transcribe it
+                voice_file = await message.bot.get_file(message.voice.file_id)
+                voice_bytes = await message.bot.download_file(voice_file.file_path)
+                
+                # Show processing message
+                processing_msg = await message.answer(
+                    language_manager.get_text("processing_voice", user.language_code)
+                )
+                
+                # Transcribe the voice message
+                if transcription_service:
+                    transcribed_text = await transcription_service.transcribe_voice(voice_bytes)
+                    if transcribed_text:
+                        # Update description with transcribed text
+                        if current_description:
+                            current_description += "\n\n" + transcribed_text
+                        else:
+                            current_description = transcribed_text
+                        
+                        # Update processing message
+                        await processing_msg.edit_text(
+                            language_manager.get_text("voice_transcribed", user.language_code)
+                        )
+                    else:
+                        await processing_msg.edit_text(
+                            language_manager.get_text("transcription_failed", user.language_code)
+                        )
+                else:
+                    await processing_msg.edit_text(
+                        language_manager.get_text("transcription_not_available", user.language_code)
+                    )
+                
+                # Store voice message info
+                await state.update_data(
+                    media_type="voice",
+                    media_file_id=message.voice.file_id,
+                    description=current_description,
+                    media_caption=message.caption or current_media_caption
+                )
+                
+                # Show media added confirmation
+                await message.answer(
+                    language_manager.get_text("media_added", user.language_code)
+                )
+            except Exception as e:
+                print(f"Error processing voice message: {e}")
+                await message.answer(
+                    language_manager.get_text("error_occurred", user.language_code)
+                )
+                return
+            
+        elif message.photo:
+            try:
+                # For photos, store the largest photo file_id
+                photo = message.photo[-1]  # Get the largest photo
+                if current_description:
+                    current_description += "\n\n" + (message.caption or "")
+                else:
+                    current_description = message.caption or ""
+                
+                await state.update_data(
+                    media_type="photo",
+                    media_file_id=photo.file_id,
+                    description=current_description,
+                    media_caption=message.caption or current_media_caption
+                )
+                
+                # Show media added confirmation
+                await message.answer(
+                    language_manager.get_text("media_added", user.language_code)
+                )
+            except Exception as e:
+                print(f"Error processing photo: {e}")
+                await message.answer(
+                    language_manager.get_text("error_occurred", user.language_code)
+                )
+                return
+            
+        elif message.video:
+            try:
+                # For videos, store the video file_id
+                if current_description:
+                    current_description += "\n\n" + (message.caption or "")
+                else:
+                    current_description = message.caption or ""
+                
+                await state.update_data(
+                    media_type="video",
+                    media_file_id=message.video.file_id,
+                    description=current_description,
+                    media_caption=message.caption or current_media_caption
+                )
+                
+                # Show media added confirmation
+                await message.answer(
+                    language_manager.get_text("media_added", user.language_code)
+                )
+            except Exception as e:
+                print(f"Error processing video: {e}")
+                await message.answer(
+                    language_manager.get_text("error_occurred", user.language_code)
+                )
+                return
+            
+        elif message.text:
+            try:
+                # For text messages, append to existing description
+                if current_description:
+                    current_description += "\n\n" + message.text
+                else:
+                    current_description = message.text
+                
+                await state.update_data(
+                    media_type=current_media_type,  # Keep existing media type
+                    media_file_id=current_media_file_id,  # Keep existing media file
+                    description=current_description,
+                    media_caption=current_media_caption  # Keep existing caption
+                )
+                
+                # Show description updated confirmation
+                await message.answer(
+                    language_manager.get_text("description_updated", user.language_code)
+                )
+            except Exception as e:
+                print(f"Error processing text message: {e}")
+                await message.answer(
+                    language_manager.get_text("error_occurred", user.language_code)
+                )
+                return
+        else:
+            # Unsupported message type
+            await message.answer(
+                language_manager.get_text("unsupported_message_type", user.language_code)
+            )
+            return
+
+        try:
+            # Create inline keyboard for description management
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=language_manager.get_text("finish_description", user.language_code),
+                        callback_data="finish_description"
+                    )
+                ]
+            ])
+            
+            # Show current description preview
+            preview_text = language_manager.get_text(
+                "description_preview",
+                user.language_code,
+                description=current_description[:500] + "..." if len(current_description) > 500 else current_description
+            )
+            await message.answer(preview_text, reply_markup=keyboard)
+        except Exception as e:
+            print(f"Error showing description preview: {e}")
+            await message.answer(
+                language_manager.get_text("error_occurred", user.language_code)
+            )
+            await state.clear()
+            
+    except Exception as e:
+        print(f"Error in process_task_description: {e}")
+        await message.answer(
+            language_manager.get_text("error_occurred", user.language_code)
+        )
+        await state.clear()
+
+@router.callback_query(F.data == "finish_description")
+async def finish_description(callback: CallbackQuery, state: FSMContext, user: User):
+    try:
+        # Get current state data
+        data = await state.get_data()
+        if not data.get('description'):
+            await callback.message.answer(
+                language_manager.get_text("empty_description", user.language_code)
+            )
+            await callback.answer()
+            return
+
         # Create inline keyboard for deadline selection
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -390,16 +574,21 @@ async def process_task_description(message: Message, state: FSMContext, user: Us
             ]
         ])
         
+        # Move to deadline selection state
         await state.set_state(TaskStates.waiting_for_task_due_date)
-        await message.answer(
+        await callback.message.answer(
             language_manager.get_text("select_due_date", user.language_code),
             reply_markup=keyboard
         )
+        await callback.answer()
+        
     except Exception as e:
-        await message.answer(
+        print(f"Error in finish_description: {e}")
+        await callback.message.answer(
             language_manager.get_text("error_occurred", user.language_code)
         )
         await state.clear()
+        await callback.answer()
 
 @router.callback_query(TaskStates.waiting_for_task_due_date)
 async def process_deadline_selection(callback: CallbackQuery, state: FSMContext):
@@ -460,28 +649,29 @@ async def process_deadline_selection(callback: CallbackQuery, state: FSMContext)
             await state.update_data(due_date=due_date)
             
             try:
-                # Create task first
-                async with async_session() as session:
-                    task = Task(
+                # Get state data including media information
+                data = await state.get_data()
+                
+                # Create task with media information
+                task = await create_task_with_media(
                         team_id=data['team_id'],
                         assignee_id=data['assignee_id'],
                         description=data['description'],
                         due_date=due_date,
-                        status="pending",  # Use lowercase status
-                        creator_id=callback.from_user.id
-                    )
-                    session.add(task)
-                    await session.commit()
-                    
-                    # Refresh task to load team relationship
-                    await session.refresh(task, ['team'])
-                    
+                    creator_id=callback.from_user.id,
+                    media_type=data.get('media_type'),
+                    media_file_id=data.get('media_file_id'),
+                    media_caption=data.get('media_caption'),
+                    language_code=user.language_code
+                )
+                
+                if task and notification_system:
                     # Get assignee info for notification
                     assignee_query = select(User).where(User.id == data['assignee_id'])
                     assignee_result = await session.execute(assignee_query)
                     assignee = assignee_result.scalar_one_or_none()
                     
-                    if assignee and notification_system:
+                    if assignee:
                         await notification_system.notify_new_task(task, assignee)
                     
                     # Send success message in user's language
@@ -524,6 +714,7 @@ async def process_calendar_selection(callback: CallbackQuery, state: FSMContext)
                 await callback.message.answer(
                     language_manager.get_text("error_occurred", 'en')
                 )
+                await callback.answer()
                 return
                 
             calendar = CustomCalendar()
@@ -540,7 +731,7 @@ async def process_calendar_selection(callback: CallbackQuery, state: FSMContext)
                     )
                     return
                 
-                # Get the current state data
+                # Get state data including media information
                 data = await state.get_data()
                 
                 if not all(key in data for key in ['team_id', 'assignee_id', 'description']):
@@ -550,59 +741,38 @@ async def process_calendar_selection(callback: CallbackQuery, state: FSMContext)
                         "\nMissing required data. Please start task creation again with /add_task"
                     )
                     await state.clear()
+                    await callback.answer()
                     return
                 
-                # Create the task
                 try:
-                    async with async_session() as session:
-                        # Get team and member info
-                        team_query = select(Team).where(Team.id == data['team_id'])
-                        team_result = await session.execute(team_query)
-                        team = team_result.scalar_one_or_none()
+                    # Create task with media information
+                    task = await create_task_with_media(
+                        team_id=data['team_id'],
+                        assignee_id=data['assignee_id'],
+                        description=data['description'],
+                        due_date=selected_date,
+                        creator_id=user.id,
+                        media_type=data.get('media_type'),
+                        media_file_id=data.get('media_file_id'),
+                        media_caption=data.get('media_caption'),
+                        language_code=user.language_code
+                    )
+                    
+                    if task and notification_system:
+                        # Get assignee info for notification
+                        assignee_query = select(User).where(User.id == data['assignee_id'])
+                        assignee_result = await session.execute(assignee_query)
+                        assignee = assignee_result.scalar_one_or_none()
                         
-                        if not team:
+                        if assignee:
+                            await notification_system.notify_new_task(task, assignee)
+                            
+                            # Send success message in user's language
+                            print(f"Debug: Task created with language code: {user.language_code}")  # Debug log
                             await callback.message.answer(
-                                language_manager.get_text("team_not_found", user.language_code)
+                                language_manager.get_text("task_created", user.language_code)
                             )
-                            await state.clear()
-                            return
-                        
-                        member_query = select(User).where(User.id == data['assignee_id'])
-                        member_result = await session.execute(member_query)
-                        member = member_result.scalar_one_or_none()
-                        
-                        if not member:
-                            await callback.message.answer(
-                                language_manager.get_text("member_not_found", user.language_code)
-                            )
-                            await state.clear()
-                            return
-                        
-                        # Create task
-                        task = Task(
-                            team_id=data['team_id'],
-                            assignee_id=data['assignee_id'],
-                            description=data['description'],
-                            due_date=selected_date,
-                            status="pending",
-                            creator_id=user.id
-                        )
-                        session.add(task)
-                        await session.commit()
-                        
-                        # Refresh task to load team relationship
-                        await session.refresh(task, ['team'])
-                        
-                        # Notify assignee
-                        if notification_system:
-                            await notification_system.notify_new_task(task, member)
-                        
-                        # Send success message in user's language
-                        print(f"Debug: Task created with language code: {user.language_code}")  # Debug log
-                        await callback.message.answer(
-                            language_manager.get_text("task_created", user.language_code)
-                        )
-                        
+                    
                 except Exception as e:
                     print(f"Error creating task in database: {e}")
                     await callback.message.answer(
@@ -611,6 +781,7 @@ async def process_calendar_selection(callback: CallbackQuery, state: FSMContext)
                     )
                 finally:
                     await state.clear()
+                    await callback.answer()
             
     except Exception as e:
         print(f"Error in calendar selection: {e}")  # Debug logging
@@ -618,8 +789,8 @@ async def process_calendar_selection(callback: CallbackQuery, state: FSMContext)
         try:
             state_data = await state.get_data()
             print(f"State data at error: {state_data}")
-        except:
-            print("Could not get state data")
+        except Exception as e:
+            print(f"Could not get state data: {e}")
         
         await callback.message.answer(
             language_manager.get_text("error_occurred", user.language_code) +
@@ -649,23 +820,25 @@ async def create_task(
             # Use the language code from the user object
             language_code = user.language_code
             
-            # Rest of the function using language_code
-            # ... existing code ...
-            
-            # Send success message in user's language
-            print(f"Debug: Task created with language code: {language_code}")  # Debug log
-            await callback.message.answer(
-                language_manager.get_text("task_created", language_code)
+            # Create the task
+            task = Task(
+                team_id=team_id,
+                assignee_id=assignee_id,
+                description=description,
+                due_date=due_date,
+                status="pending",
+                creator_id=creator_id
             )
             
-            # ... existing code ...
+            session.add(task)
+            await session.commit()
+            await session.refresh(task, ['team'])
             
+            print(f"Debug: Task created with language code: {language_code}")  # Debug log
             return task
+            
     except Exception as e:
         print(f"Error in create_task: {e}")
-        await callback.message.answer(
-            language_manager.get_text("error_occurred", language_code)
-        )
         return None
 
 @router.message(Command("tasks"))
@@ -697,53 +870,55 @@ async def cmd_tasks(message: Message, user: User):
 async def view_team_tasks(callback: CallbackQuery, user: User):
     team_id = int(callback.data.split('_')[2])
     
-    async with async_session() as session:
-        # Check if user is a manager of this team
-        query = select(TeamMember).where(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == user.id,
-            TeamMember.role == "Manager"
-        )
-        result = await session.execute(query)
-        is_manager = result.scalar_one_or_none() is not None
-        
-        if is_manager:
-            # Get all members of the team
-            query = select(User).join(TeamMember).where(TeamMember.team_id == team_id)
+    try:
+        async with async_session() as session:
+            # Check if user is a manager of this team
+            query = select(TeamMember).where(
+                TeamMember.team_id == team_id,
+                TeamMember.user_id == user.id,
+                TeamMember.role == "Manager"
+            )
             result = await session.execute(query)
-            members = result.scalars().all()
+            is_manager = result.scalar_one_or_none() is not None
             
-            if not members:
+            if is_manager:
+                # Get all members of the team
+                query = select(User).join(TeamMember).where(TeamMember.team_id == team_id)
+                result = await session.execute(query)
+                members = result.scalars().all()
+                
+                if not members:
+                    await callback.message.answer(
+                        language_manager.get_text("no_members", user.language_code)
+                    )
+                    await callback.answer()
+                    return
+                
+                # Create inline keyboard for member selection
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text=f"{member.first_name} {member.last_name} (@{member.username})",
+                        callback_data=f"view_member_tasks_{team_id}_{member.id}"
+                    )]
+                    for member in members
+                ])
+                
+                # Add "All members" button
+                keyboard.inline_keyboard.append([
+                    InlineKeyboardButton(
+                        text=language_manager.get_text("all_members", user.language_code),
+                        callback_data=f"view_all_tasks_{team_id}"
+                    )
+                ])
+                
                 await callback.message.answer(
-                    language_manager.get_text("no_members", user.language_code)
+                    language_manager.get_text("select_member_view", user.language_code),
+                    reply_markup=keyboard
                 )
+                await callback.answer()
                 return
             
-            # Create inline keyboard for member selection
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=f"{member.first_name} {member.last_name} (@{member.username})",
-                    callback_data=f"view_member_tasks_{team_id}_{member.id}"
-                )]
-                for member in members
-            ])
-            
-            # Add "All members" button
-            keyboard.inline_keyboard.append([
-                InlineKeyboardButton(
-                    text=language_manager.get_text("all_members", user.language_code),
-                    callback_data=f"view_all_tasks_{team_id}"
-                )
-            ])
-            
-            await callback.message.answer(
-                language_manager.get_text("select_member_view", user.language_code),
-                reply_markup=keyboard
-            )
-            await callback.answer()
-        else:
-            # For regular members, show only their tasks with their language preference
-            # Get tasks for the user in this team
+            # For regular members, show only their tasks
             query = select(Task).options(joinedload(Task.team)).where(
                 Task.team_id == team_id,
                 Task.assignee_id == user.id
@@ -755,6 +930,7 @@ async def view_team_tasks(callback: CallbackQuery, user: User):
                 await callback.message.answer(
                     language_manager.get_text("no_tasks", user.language_code)
                 )
+                await callback.answer()
                 return
             
             # Send header first
@@ -764,80 +940,17 @@ async def view_team_tasks(callback: CallbackQuery, user: User):
             
             # Send each task
             for task in tasks:
-                try:
-                    # Format due date
-                    due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code)
-                    
-                    # Calculate remaining days
-                    remaining_days = (
-                        task.due_date.date() - datetime.now().date()
-                    ).days if task.due_date else None
-                    
-                    if remaining_days is not None:
-                        due_date_str += f" ({remaining_days} {language_manager.get_text('days', user.language_code)})"
-                    
-                    # Get translated status with emoji
-                    status_emoji = {
-                        "pending": "📝",
-                        "in_progress": "🔄",
-                        "done": "✅"
-                    }
-                    current_status_emoji = status_emoji.get(task.status.lower(), "📊")
-                    translated_status = f"{current_status_emoji} {language_manager.get_text({
-                        'pending': 'status_pending',
-                        'in_progress': 'status_in_progress',
-                        'done': 'status_done'
-                    }[task.status.lower()], user.language_code)}"
-                    
-                    # Log the values being passed
-                    print(f"Member task view values - task_id: {task.id}, team_name: {task.team.name if task.team else 'None'}, description: {task.description}, due_date: {due_date_str}, status: {translated_status}")
-                    
-                    # Format task text
-                    task_text = language_manager.get_text(
-                        "task_item",
-                        user.language_code,
-                        team_name=task.team.name if task.team else language_manager.get_text("unknown", user.language_code),
-                        task_id=str(task.id),
-                        assignee=f"{user.first_name} {user.last_name} (@{user.username})",
-                        description=task.description,
-                        due_date=due_date_str,
-                        status=translated_status
-                    )
-                    
-                    # Create status update buttons for each task
-                    buttons = []
-                    
-                    # Show status update button if task is not done
-                    if task.status.lower() != "done":
-                        # Map current status to next status
-                        status_flow = {
-                            "pending": "in_progress",
-                            "in_progress": "done"
-                        }
-                        next_status = status_flow[task.status.lower()]
-                        next_status_emoji = status_emoji[next_status]
-                        button_text = language_manager.get_text(
-                            {
-                                'pending': 'status_pending',
-                                'in_progress': 'status_in_progress',
-                                'done': 'status_done'
-                            }[next_status],
-                            user.language_code
-                        )
-                        buttons.append(
-                            InlineKeyboardButton(
-                                text=f"{next_status_emoji} {button_text}",
-                                callback_data=f"update_status_{task.id}_{next_status}"
-                            )
-                        )
-                    
-                    status_keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
-                    await callback.message.answer(task_text, reply_markup=status_keyboard)
-                except Exception as e:
-                    print(f"Error formatting task in view_team_tasks: {e}")
-                    continue
+                task_text, keyboard = await format_task_message(task, user, user.language_code)
+                await send_task_with_media(callback.message, task, task_text, keyboard)
             
             await callback.answer()
+            
+    except Exception as e:
+        print(f"Error in view_team_tasks: {e}")
+        await callback.message.answer(
+            language_manager.get_text("error_occurred", user.language_code)
+        )
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("view_member_tasks_"))
 async def view_member_tasks(callback: CallbackQuery, user: User):
@@ -901,101 +1014,8 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
         
         # Send each task
         for task in tasks:
-            try:
-                # Get assignee info
-                assignee_query = select(User).where(User.id == task.assignee_id)
-                assignee_result = await session.execute(assignee_query)
-                assignee = assignee_result.scalar_one_or_none()
-                
-                # Format assignee name
-                assignee_name = (
-                    f"{assignee.first_name} {assignee.last_name} (@{assignee.username})"
-                    if assignee
-                    else language_manager.get_text("unknown", user.language_code)
-                )
-                
-                # Format due date
-                due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code)
-                
-                # Calculate remaining days
-                remaining_days = (
-                    task.due_date.date() - datetime.now().date()
-                ).days if task.due_date else None
-                
-                if remaining_days is not None:
-                    due_date_str += f" ({remaining_days} {language_manager.get_text('days', user.language_code)})"
-                
-                # Get translated status with emoji
-                status_emoji = {
-                    "pending": "📝",
-                    "in_progress": "🔄",
-                    "done": "✅"
-                }
-                current_status_emoji = status_emoji.get(task.status.lower(), "📊")
-                translated_status = f"{current_status_emoji} {language_manager.get_text({
-                    'pending': 'status_pending',
-                    'in_progress': 'status_in_progress',
-                    'done': 'status_done'
-                }[task.status.lower()], user.language_code)}"
-                
-                # Log the values being passed
-                print(f"All tasks view values - task_id: {task.id}, team_name: {task.team.name if task.team else 'None'}, description: {task.description}, due_date: {due_date_str}, status: {translated_status}")
-                
-                # Format task text
-                task_text = language_manager.get_text(
-                    "task_item",
-                    user.language_code,
-                    team_name=task.team.name if task.team else language_manager.get_text("unknown", user.language_code),
-                    task_id=str(task.id),
-                    assignee=assignee_name,
-                    description=task.description,
-                    due_date=due_date_str,
-                    status=translated_status
-                )
-                
-                # Create status update buttons for each task
-                buttons = []
-                
-                # Show status update button if:
-                # 1. User is a manager (can change any status)
-                # 2. User is the assignee and task is not done
-                if is_manager or (task.assignee_id == user.id and task.status.lower() != "done"):
-                    # Map current status to next status
-                    status_flow = {
-                        "pending": "in_progress",
-                        "in_progress": "done",
-                        "done": "pending"
-                    }
-                    next_status = status_flow[task.status.lower()]
-                    button_text = language_manager.get_text(
-                        {
-                            'pending': 'status_pending',
-                            'in_progress': 'status_in_progress',
-                            'done': 'status_done'
-                        }[next_status],
-                        user.language_code
-                    )
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text=f"{status_emoji[next_status]} {button_text}",
-                            callback_data=f"update_status_{task.id}_{next_status}"
-                        )
-                    )
-                
-                # Add delete button for managers (always show for managers)
-                if is_manager:
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text=language_manager.get_text("delete_task", user.language_code),
-                            callback_data=f"delete_task_{task.id}"
-                        )
-                    )
-                
-                status_keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
-                await callback.message.answer(task_text, reply_markup=status_keyboard)
-            except Exception as e:
-                print(f"Error formatting task in view_all_tasks: {e}")
-                continue
+            task_text, keyboard = await format_task_message(task, user, user.language_code)
+            await send_task_with_media(callback.message, task, task_text, keyboard)
         
         await callback.answer()
 
@@ -1027,102 +1047,8 @@ async def show_tasks(message, team_id: int, member_id: int | None, language_code
         
         # Send each task
         for task in tasks:
-            try:
-                # Get assignee info
-                assignee_query = select(User).where(User.id == task.assignee_id)
-                assignee_result = await session.execute(assignee_query)
-                assignee = assignee_result.scalar_one_or_none()
-                
-                # Format assignee name
-                assignee_name = (
-                    f"{assignee.first_name} {assignee.last_name} (@{assignee.username})"
-                    if assignee
-                    else language_manager.get_text("unknown", language_code)
-                )
-                
-                # Format due date
-                due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", language_code)
-                
-                # Calculate remaining days
-                remaining_days = (
-                    task.due_date.date() - datetime.now().date()
-                ).days if task.due_date else None
-                
-                if remaining_days is not None:
-                    due_date_str += f" ({remaining_days} {language_manager.get_text('days', language_code)})"
-                
-                # Get translated status with emoji
-                status_emoji = {
-                    "pending": "📝",
-                    "in_progress": "🔄",
-                    "done": "✅"
-                }
-                current_status_emoji = status_emoji.get(task.status.lower(), "📊")
-                translated_status = f"{current_status_emoji} {language_manager.get_text({
-                    'pending': 'status_pending',
-                    'in_progress': 'status_in_progress',
-                    'done': 'status_done'
-                }[task.status.lower()], language_code)}"
-                
-                # Log the values being passed
-                print(f"Task view values - task_id: {task.id}, team_name: {task.team.name if task.team else 'None'}, description: {task.description}, due_date: {due_date_str}, status: {translated_status}")
-                
-                # Format task text
-                task_text = language_manager.get_text(
-                    "task_item",
-                    language_code,
-                    team_name=task.team.name if task.team else language_manager.get_text("unknown", language_code),
-                    task_id=str(task.id),
-                    assignee=assignee_name,
-                    description=task.description,
-                    due_date=due_date_str,
-                    status=translated_status
-                )
-                
-                # Create status update buttons for each task
-                buttons = []
-                
-                # Show status update button if:
-                # 1. User is a manager (can change any status)
-                # 2. User is the assignee and task is not done
-                if is_manager or (message.from_user.id == task.assignee_id and task.status.lower() != "done"):
-                    # Map current status to next status
-                    status_flow = {
-                        "pending": "in_progress",
-                        "in_progress": "done",
-                        "done": "pending"
-                    }
-                    next_status = status_flow[task.status.lower()]
-                    next_status_emoji = status_emoji[next_status]
-                    button_text = language_manager.get_text(
-                        {
-                            'pending': 'status_pending',
-                            'in_progress': 'status_in_progress',
-                            'done': 'status_done'
-                        }[next_status],
-                        language_code
-                    )
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text=f"{next_status_emoji} {button_text}",
-                            callback_data=f"update_status_{task.id}_{next_status}"
-                        )
-                    )
-                
-                # Add delete button for managers (always show for managers)
-                if is_manager:
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text=language_manager.get_text("delete_task", language_code),
-                            callback_data=f"delete_task_{task.id}"
-                        )
-                    )
-                
-                status_keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
-                await message.answer(task_text, reply_markup=status_keyboard)
-            except Exception as e:
-                print(f"Error formatting task in show_tasks: {e}")
-                continue
+            task_text, keyboard = await format_task_message(task, user, language_code)
+            await send_task_with_media(message, task, task_text, keyboard)
 
 @router.callback_query(F.data.startswith("update_status_"))
 async def update_task_status(callback: CallbackQuery, user: User):
@@ -1248,67 +1174,21 @@ async def update_task_status(callback: CallbackQuery, user: User):
                 "done": "✅"
             }
             current_status_emoji = status_emoji.get(new_status.lower(), "📊")
-            translated_status = f"{current_status_emoji} {language_manager.get_text({
+            status_key = {
                 'pending': 'status_pending',
                 'in_progress': 'status_in_progress',
                 'done': 'status_done'
-            }[new_status.lower()], user.language_code)}"
+            }[new_status.lower()]
+            translated_status = f"{current_status_emoji} {language_manager.get_text(status_key, user.language_code)}"
             
             # Log the values being passed
             print(f"Update status values - task_id: {task.id}, team_name: {task.team.name if task.team else 'None'}, description: {task.description}, due_date: {due_date_str}, status: {translated_status}")
             
             # Format task text
-            task_text = language_manager.get_text(
-                "task_item",
-                user.language_code,
-                team_name=task.team.name if task.team else language_manager.get_text("unknown", user.language_code),
-                task_id=str(task.id),
-                assignee=f"{assignee.first_name} {assignee.last_name} (@{assignee.username})" if assignee else language_manager.get_text("unknown", user.language_code),
-                description=task.description,
-                due_date=due_date_str,
-                status=translated_status
-            )
+            task_text, keyboard = await format_task_message(task, user, user.language_code)
             
-            # Create new keyboard
-            buttons = []
-            # Show status update button if:
-            # 1. User is a manager (can change any status)
-            # 2. User is the assignee and task is not done
-            if is_manager or (user.id == task.assignee_id and new_status != "done"):
-                # Map current status to next status
-                status_flow = {
-                    "pending": "in_progress",
-                    "in_progress": "done",
-                    "done": "pending"
-                }
-                next_status = status_flow[new_status.lower()]
-                next_status_emoji = status_emoji[next_status]
-                button_text = language_manager.get_text(
-                    {
-                        'pending': 'status_pending',
-                        'in_progress': 'status_in_progress',
-                        'done': 'status_done'
-                    }[next_status],
-                    user.language_code
-                )
-                buttons.append(
-                    InlineKeyboardButton(
-                        text=f"{next_status_emoji} {button_text}",
-                        callback_data=f"update_status_{task.id}_{next_status}"
-                    )
-                )
-            
-            # Add delete button for managers (always show for managers)
-            if is_manager:
-                buttons.append(
-                    InlineKeyboardButton(
-                        text=language_manager.get_text("delete_task", user.language_code),
-                        callback_data=f"delete_task_{task.id}"
-                    )
-                )
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
-            await callback.message.edit_text(task_text, reply_markup=keyboard)
+            # Send task message with media if any
+            await send_task_with_media(callback.message, task, task_text, keyboard)
             await callback.answer()
     except Exception as e:
         print(f"Error in update_task_status: {e}")
@@ -1400,3 +1280,117 @@ def get_remaining_days(deadline: datetime) -> int:
     deadline = deadline.replace(hour=0, minute=0, second=0, microsecond=0)
     remaining = deadline - today
     return max(0, remaining.days) 
+
+async def create_task_with_media(
+    team_id: int,
+    description: str,
+    due_date: datetime,
+    creator_id: int,
+    assignee_id: int,
+    media_type: str | None,
+    media_file_id: str | None,
+    media_caption: str | None,
+    language_code: str
+) -> Optional[Task]:
+    try:
+        async with async_session() as session:
+            task = Task(
+                team_id=team_id,
+                assignee_id=assignee_id,
+                description=description,
+                due_date=due_date,
+                status="pending",
+                creator_id=creator_id,
+                media_type=media_type,
+                media_file_id=media_file_id,
+                media_caption=media_caption
+            )
+            session.add(task)
+            await session.commit()
+            await session.refresh(task, ['team'])
+            return task
+    except Exception as e:
+        print(f"Error in create_task_with_media: {e}")
+        return None
+
+async def format_task_message(task: Task, user: User, language_code: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Helper function to format task message and keyboard"""
+    # Format due date
+    due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", language_code)
+    
+    # Get translated status
+    status_map = {
+        "pending": "status_pending",
+        "in_progress": "status_in_progress",
+        "done": "status_done"
+    }
+    translated_status = language_manager.get_text(status_map[task.status.lower()], language_code)
+    
+    # Format task text
+    task_text = language_manager.get_text(
+        "task_item",
+        language_code,
+        team_name=task.team.name if task.team else language_manager.get_text("unknown", language_code),
+        task_id=str(task.id),
+        assignee=f"{user.first_name} {user.last_name} (@{user.username})",
+        description=task.description,
+        due_date=due_date_str,
+        status=translated_status
+    )
+    
+    # Add media caption if exists
+    if task.media_caption:
+        task_text += f"\n\n📎 Media caption:\n{task.media_caption}"
+    
+    # Create status update buttons
+    buttons = []
+    if task.status.lower() != "done":
+        status_flow = {
+            "pending": "in_progress",
+            "in_progress": "done"
+        }
+        next_status = status_flow[task.status.lower()]
+        next_status_emoji = status_emoji[next_status]
+        button_text = language_manager.get_text(
+            {
+                'pending': 'status_pending',
+                'in_progress': 'status_in_progress',
+                'done': 'status_done'
+            }[next_status],
+            language_code
+        )
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"{next_status_emoji} {button_text}",
+                callback_data=f"update_status_{task.id}_{next_status}"
+            )
+        )
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
+    return task_text, keyboard
+
+async def send_task_with_media(message: Message, task: Task, task_text: str, keyboard: InlineKeyboardMarkup | None = None):
+    """Helper function to send task message with media if any"""
+    if task.media_type == "photo" and task.media_file_id:
+        await message.answer_photo(
+            photo=task.media_file_id,
+            caption=task_text,
+            reply_markup=keyboard
+        )
+    elif task.media_type == "video" and task.media_file_id:
+        await message.answer_video(
+            video=task.media_file_id,
+            caption=task_text,
+            reply_markup=keyboard
+        )
+    elif task.media_type == "voice" and task.media_file_id:
+        await message.answer_voice(
+            voice=task.media_file_id,
+            caption=task_text,
+            reply_markup=keyboard
+        )
+    else:
+        await message.answer(
+            text=task_text,
+            reply_markup=keyboard
+        ) 

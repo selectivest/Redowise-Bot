@@ -11,14 +11,17 @@ from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.enums import ParseMode
 from dotenv import load_dotenv
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from taskmanager.config import Config
 from taskmanager.database.models import Base, User
-from taskmanager.database.connection import engine, async_session
+from taskmanager.database.connection import engine, async_session, init_db
 from taskmanager.handlers import user, team, task
 from taskmanager.middlewares.auth import AuthMiddleware
 from taskmanager.middlewares.user import UserMiddleware
 from taskmanager.languages.manager import language_manager
+from taskmanager.notifications import init_notification_system
+from taskmanager.services.transcription import init_transcription_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,11 +31,12 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Initialize bot and dispatcher
-bot = Bot(token=Config.BOT_TOKEN)
-dp = Dispatcher()
+bot = Bot(token=os.getenv('BOT_TOKEN'))
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
 # Initialize notification system
-task.init_notification_system(bot)
+notification_system = init_notification_system(bot)
 
 # Register middlewares
 dp.message.middleware(AuthMiddleware())
@@ -46,16 +50,18 @@ dp.include_router(task.router)
 dp.include_router(user.router)
 
 async def main():
-    # Create database tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Initialize database
+    await init_db()
     
     # Start notification system
-    if task.notification_system:
-        await task.notification_system.start()
+    await notification_system.start()
     
-    # Start polling
-    await dp.start_polling(bot)
+    try:
+        # Start polling
+        await dp.start_polling(bot)
+    finally:
+        # Stop notification system
+        await notification_system.stop()
 
 if __name__ == '__main__':
     asyncio.run(main()) 
