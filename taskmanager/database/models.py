@@ -63,6 +63,7 @@ class Task(Base):
     due_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="pending")  # Values: pending, in_progress, done
+    media_file_id = Column(String, nullable=True)  # Store Telegram file_id for media attachments
     
     # Relationships
     team = relationship("Team", back_populates="tasks")

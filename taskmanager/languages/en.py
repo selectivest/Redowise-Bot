@@ -23,6 +23,7 @@ translations: Dict[str, str] = {
     "select_team": "Select the team to add the member to:",
     "user_not_found": "User not found. Please make sure they have registered with the bot first.",
     "user_not_started_bot": "Error: @{username} hasn't started the bot yet. Please ask them to start the bot with /start first.",
+    "user_already_in_team": "Error: @{username} is already a member of team '{team_name}'.",
     "team_invitation": "👋 You have been invited to join team '{team_name}'!\n\nManager: @{manager_username}\n\nWould you like to accept the invitation?",
     "invitation_sent": "Invitation has been sent to @{username}",
     "invitation_send_error": "Error: Cannot send invitation to @{username}. Please make sure they have started the bot and try again.",

@@ -189,7 +189,7 @@ async def process_member_username(message: Message, state: FSMContext, user: Use
                 reply_markup=keyboard
             )
     except Exception as e:
-        print(f"Error processing member username: {e}")  # For debugging
+        print(f"Error processing member username: {e}")  # Debug log
         await message.answer(
             language_manager.get_text("error_occurred", user.language_code)
         )
@@ -233,6 +233,27 @@ async def process_team_selection(callback: CallbackQuery, state: FSMContext):
                 await callback.message.answer(
                     language_manager.get_text("user_not_found", user.language_code)
                 )
+                return
+
+            # Check if user is already in the selected team
+            membership_query = select(TeamMember).where(
+                TeamMember.team_id == team_id,
+                TeamMember.user_id == member.id
+            )
+            membership_result = await session.execute(membership_query)
+            existing_membership = membership_result.scalar_one_or_none()
+            
+            if existing_membership:
+                await callback.message.answer(
+                    language_manager.get_text(
+                        "user_already_in_team",
+                        user.language_code,
+                        username=member.username,
+                        team_name=team.name
+                    )
+                )
+                await state.clear()
+                await callback.answer()
                 return
             
             # Create invitation
