@@ -16,10 +16,6 @@ router = Router()
 async def set_commands(bot):
     commands = [
         BotCommand(command="start", description="Start the bot and register"),
-        BotCommand(command="help", description="Show detailed help information"),
-        BotCommand(command="menu", description="Show main menu"),
-        BotCommand(command="show_keyboard", description="Show keyboard menu"),
-        BotCommand(command="hide_keyboard", description="Hide keyboard menu"),
         BotCommand(command="language", description="Change language")
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
@@ -38,7 +34,7 @@ def get_keyboard_menu(user: User = None) -> ReplyKeyboardMarkup:
         [KeyboardButton(text=language_manager.get_text("member_management", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("create_team", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("view_tasks", user.language_code))],
-        [KeyboardButton(text=language_manager.get_text("help", user.language_code))]
+        [KeyboardButton(text=f"❓ {language_manager.get_text('help_button', user.language_code)}")]
     ]
     
     return ReplyKeyboardMarkup(
@@ -49,23 +45,49 @@ def get_keyboard_menu(user: User = None) -> ReplyKeyboardMarkup:
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
-    # Check if user exists
+    # Check if user exists by telegram_id
     async with async_session() as session:
         query = select(User).where(User.telegram_id == message.from_user.id)
         result = await session.execute(query)
         user = result.scalar_one_or_none()
         
         if not user:
-            # Create new user
-            user = User(
-                telegram_id=message.from_user.id,
-                first_name=message.from_user.first_name,
-                last_name=message.from_user.last_name,
-                username=message.from_user.username,
-                role=UserRole.MEMBER,
-                language_code='en'  # Default language
-            )
-            session.add(user)
+            # Check if username already exists
+            username = message.from_user.username
+            if username:
+                username_query = select(User).where(User.username == username)
+                username_result = await session.execute(username_query)
+                existing_user = username_result.scalar_one_or_none()
+                if existing_user:
+                    # Update telegram_id and info for this username
+                    existing_user.telegram_id = message.from_user.id
+                    existing_user.first_name = message.from_user.first_name
+                    existing_user.last_name = message.from_user.last_name
+                    existing_user.role = UserRole.MEMBER
+                    # Do not change language_code here
+                    user = existing_user
+                else:
+                    # Create new user
+                    user = User(
+                        telegram_id=message.from_user.id,
+                        first_name=message.from_user.first_name,
+                        last_name=message.from_user.last_name,
+                        username=message.from_user.username,
+                        role=UserRole.MEMBER,
+                        language_code='en'  # Default language
+                    )
+                    session.add(user)
+            else:
+                # Create new user without username
+                user = User(
+                    telegram_id=message.from_user.id,
+                    first_name=message.from_user.first_name,
+                    last_name=message.from_user.last_name,
+                    username=None,
+                    role=UserRole.MEMBER,
+                    language_code='en'  # Default language
+                )
+                session.add(user)
             await session.commit()
     
     # Show language selection menu
@@ -119,7 +141,7 @@ async def process_language_selection(callback: CallbackQuery):
                 [KeyboardButton(text=language_manager.get_text("member_management", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("create_team", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("view_tasks", lang_code))],
-                [KeyboardButton(text=language_manager.get_text("help", lang_code))]
+                [KeyboardButton(text=f"❓ {language_manager.get_text('help_button', lang_code)}")]
             ]
             
             await callback.message.answer(
@@ -163,6 +185,10 @@ async def cmd_menu(message: Message, user: User):
 async def cmd_help(message: Message, user: User):
     help_text = language_manager.get_text("help", user.language_code)
     await message.answer(help_text, parse_mode="Markdown")
+
+@router.message(F.text.regexp(r"^❓ ?"))
+async def handle_help_button(message: Message, user: User):
+    await cmd_help(message, user)
 
 @router.message(F.text)
 async def handle_menu_button(message: Message, state: FSMContext, user: User):
@@ -262,10 +288,6 @@ async def handle_menu_button(message: Message, state: FSMContext, user: User):
         await message.answer(
             language_manager.get_text("error_occurred", user.language_code)
         )
-
-@router.message(F.text == "❓ Help")
-async def handle_help_button(message: Message, user: User):
-    await cmd_help(message, user)
 
 @router.message(F.text == "ℹ️ About")
 async def handle_about_button(message: Message):

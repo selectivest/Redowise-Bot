@@ -1185,125 +1185,117 @@ async def update_task_status(callback: CallbackQuery, user: User):
         
         # Fix callback data parsing to handle status with underscores
         data_parts = callback.data.split('_', 3)  # Split only first 3 underscores
-        task_id = int(data_parts[2])
+        if len(data_parts) < 4:
+            print(f"Invalid callback data format: {callback.data}")  # Debug log
+            await callback.message.answer(
+                language_manager.get_text("error_occurred", user.language_code)
+            )
+            await callback.answer()
+            return
+
+        try:
+            task_id = int(data_parts[2])
+        except ValueError as e:
+            print(f"Invalid task ID in callback data: {data_parts[2]}")  # Debug log
+            await callback.message.answer(
+                language_manager.get_text("error_occurred", user.language_code)
+            )
+            await callback.answer()
+            return
+
         new_status = data_parts[3]  # This will keep "in_progress" intact
         print(f"Parsed callback data - task_id: {task_id}, new_status: {new_status}")  # Debug log
         
         async with async_session() as session:
-            # Get the task with team relationship loaded
-            query = select(Task).options(joinedload(Task.team)).where(Task.id == task_id)
-            result = await session.execute(query)
-            task = result.scalar_one_or_none()
-            
-            if not task:
-                print(f"Task not found with id {task_id}")  # Debug log
-                await callback.message.answer(
-                    language_manager.get_text("task_not_found", user.language_code)
-                )
-                return
-            
-            print(f"Found task: id={task.id}, current_status={task.status}, new_status={new_status}")  # Debug log
-            
-            # Check if user is a manager of the team
-            team_member_query = select(TeamMember).where(
-                TeamMember.team_id == task.team_id,
-                TeamMember.user_id == user.id,
-                TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
-            )
-            team_member_result = await session.execute(team_member_query)
-            is_manager = team_member_result.scalar_one_or_none() is not None
-            print(f"User {user.id} is manager: {is_manager}")  # Debug log
-            
-            # For members (non-managers):
-            # 1. Can only update their own tasks
-            # 2. Can only change status up to "done"
-            # 3. Cannot change status of tasks that are already "done"
-            if not is_manager:
-                if task.assignee_id != user.id:
-                    print(f"User {user.id} tried to update task {task.id} assigned to {task.assignee_id}")  # Debug log
-                    await callback.message.answer(
-                        language_manager.get_text("update_own_tasks", user.language_code)
-                    )
-                    return
-                if task.status.lower() == "done":
-                    print(f"User {user.id} tried to update done task {task.id}")  # Debug log
-                    await callback.message.answer(
-                        language_manager.get_text("completed_tasks_locked", user.language_code)
-                    )
-                    return
-                if new_status not in ["in_progress", "done"]:
-                    print(f"User {user.id} tried to set invalid status {new_status} for task {task.id}")  # Debug log
-                    await callback.message.answer(
-                        language_manager.get_text("status_limit", user.language_code)
-                    )
-                    return
-            
             try:
-                # Get assignee info for notification
-                assignee_query = select(User).where(User.id == task.assignee_id)
-                assignee_result = await session.execute(assignee_query)
-                assignee = assignee_result.scalar_one_or_none()
-                print(f"Found assignee: {assignee.id if assignee else 'None'}")  # Debug log
+                # Get the task with team relationship loaded
+                query = select(Task).options(
+                    joinedload(Task.team),
+                    joinedload(Task.creator),
+                    joinedload(Task.assignee)
+                ).where(Task.id == task_id)
+                result = await session.execute(query)
+                task = result.scalar_one_or_none()
                 
-                # Get manager info for notification
-                manager_query = select(User).join(TeamMember).where(
+                if not task:
+                    print(f"Task not found with id {task_id}")  # Debug log
+                    await callback.message.answer(
+                        language_manager.get_text("task_not_found", user.language_code)
+                    )
+                    await callback.answer()
+                    return
+
+                print(f"Found task: id={task.id}, current_status={task.status}, new_status={new_status}")  # Debug log
+                print(f"Task relationships - team_id: {task.team_id}, creator_id: {task.creator_id}, assignee_id: {task.assignee_id}")  # Debug log
+                
+                # Validate task relationships
+                if not task.team:
+                    print(f"Task {task_id} has invalid team relationship")  # Debug log
+                    await callback.message.answer(
+                        language_manager.get_text("error_occurred", user.language_code)
+                    )
+                    await callback.answer()
+                    return
+
+                if not task.creator:
+                    print(f"Task {task_id} has invalid creator relationship")  # Debug log
+                    await callback.message.answer(
+                        language_manager.get_text("error_occurred", user.language_code)
+                    )
+                    await callback.answer()
+                    return
+
+                if not task.assignee:
+                    print(f"Task {task_id} has invalid assignee relationship")  # Debug log
+                    await callback.message.answer(
+                        language_manager.get_text("error_occurred", user.language_code)
+                    )
+                    await callback.answer()
+                    return
+
+                # Check if user is a manager of the team
+                team_member_query = select(TeamMember).where(
                     TeamMember.team_id == task.team_id,
+                    TeamMember.user_id == user.id,
                     TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
                 )
-                manager_result = await session.execute(manager_query)
-                manager = manager_result.scalar_one_or_none()
-                print(f"Found manager: {manager.id if manager else 'None'}")  # Debug log
+                team_member_result = await session.execute(team_member_query)
+                is_manager = team_member_result.first() is not None
+                print(f"User {user.id} is manager: {is_manager}")  # Debug log
                 
+                # For members (non-managers):
+                # 1. Can only update their own tasks
+                # 2. Can only change status up to "done"
+                # 3. Cannot change status of tasks that are already "done"
+                if not is_manager:
+                    if task.assignee_id != user.id:
+                        print(f"User {user.id} tried to update task {task.id} assigned to {task.assignee_id}")  # Debug log
+                        await callback.message.answer(
+                            language_manager.get_text("update_own_tasks", user.language_code)
+                        )
+                        await callback.answer()
+                        return
+                    if task.status.lower() == "done":
+                        print(f"User {user.id} tried to update done task {task.id}")  # Debug log
+                        await callback.message.answer(
+                            language_manager.get_text("completed_tasks_locked", user.language_code)
+                        )
+                        await callback.answer()
+                        return
+                    if new_status not in ["in_progress", "done"]:
+                        print(f"User {user.id} tried to set invalid status {new_status} for task {task.id}")  # Debug log
+                        await callback.message.answer(
+                            language_manager.get_text("status_limit", user.language_code)
+                        )
+                        await callback.answer()
+                        return
+
                 # Update task status
                 old_status = task.status
                 task.status = new_status
                 await session.commit()
-                print(f"Updated task {task.id} status from {old_status} to {new_status}")  # Debug log
-                
-                try:
-                    # Send notifications based on who made the change
-                    if is_manager and assignee:
-                        # If manager changed status, notify assignee
-                        print(f"Sending notification to assignee {assignee.id}")  # Debug log
-                        await callback.bot.send_message(
-                            chat_id=assignee.telegram_id,
-                            text=language_manager.get_text(
-                                'status_change_assignee',
-                                assignee.language_code,
-                                team_name=task.team.name if task.team else language_manager.get_text("unknown", assignee.language_code),
-                                task_id=str(task.id),
-                                description=task.description,
-                                due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text('no_due_date', assignee.language_code),
-                                new_status=language_manager.get_text({
-                                    'pending': 'status_pending',
-                                    'in_progress': 'status_in_progress',
-                                    'done': 'status_done'
-                                }[new_status], assignee.language_code)
-                            )
-                        )
-                    elif not is_manager and manager:
-                        # If assignee changed status, notify manager
-                        print(f"Sending notification to manager {manager.id}")  # Debug log
-                        await callback.bot.send_message(
-                            chat_id=manager.telegram_id,
-                            text=language_manager.get_text(
-                                'status_change_manager',
-                                manager.language_code,
-                                team_name=task.team.name if task.team else language_manager.get_text("unknown", manager.language_code),
-                                task_id=str(task.id),
-                                assignee_name=f"{user.first_name} {user.last_name} (@{user.username})",
-                                description=task.description,
-                                due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text('no_due_date', manager.language_code),
-                                new_status=language_manager.get_text({
-                                    'pending': 'status_pending',
-                                    'in_progress': 'status_in_progress',
-                                    'done': 'status_done'
-                                }[new_status], manager.language_code)
-                            )
-                        )
-                except Exception as notify_error:
-                    print(f"Error sending notification: {notify_error}")  # Debug log
-                
+                print(f"Successfully updated task {task.id} status from {old_status} to {new_status}")  # Debug log
+
                 # Format due date
                 due_date_str = task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text("no_due_date", user.language_code)
                 
@@ -1321,7 +1313,7 @@ async def update_task_status(callback: CallbackQuery, user: User):
                     "in_progress": "🔄",
                     "done": "✅"
                 }
-                current_status_emoji = status_emoji.get(new_status.lower(), "\ud83d\udcca")
+                current_status_emoji = status_emoji.get(new_status.lower(), "📊")
                 status_key = {
                     'pending': 'status_pending',
                     'in_progress': 'status_in_progress',
@@ -1335,7 +1327,7 @@ async def update_task_status(callback: CallbackQuery, user: User):
                     user.language_code,
                     team_name=task.team.name if task.team else language_manager.get_text("unknown", user.language_code),
                     task_id=str(task.id),
-                    assignee=f"{assignee.first_name} {assignee.last_name} (@{assignee.username})" if assignee else language_manager.get_text("unknown", user.language_code),
+                    assignee=f"{task.assignee.first_name} {task.assignee.last_name} (@{task.assignee.username})" if task.assignee else language_manager.get_text("unknown", user.language_code),
                     description=task.description,
                     due_date=due_date_str,
                     status=translated_status
@@ -1381,6 +1373,7 @@ async def update_task_status(callback: CallbackQuery, user: User):
                 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
                 
+                # Update message with new status
                 try:
                     # If task has media, update with media
                     if task.media_file_id:
@@ -1438,16 +1431,63 @@ async def update_task_status(callback: CallbackQuery, user: User):
                         await callback.message.answer(
                             language_manager.get_text("error_occurred", user.language_code)
                         )
-                
+
+                # Send notifications based on who made the change
+                try:
+                    if is_manager and task.assignee:
+                        # If manager changed status, notify assignee
+                        print(f"Sending notification to assignee {task.assignee.id}")  # Debug log
+                        await callback.bot.send_message(
+                            chat_id=task.assignee.telegram_id,
+                            text=language_manager.get_text(
+                                'status_change_assignee',
+                                task.assignee.language_code,
+                                team_name=task.team.name if task.team else language_manager.get_text("unknown", task.assignee.language_code),
+                                task_id=str(task.id),
+                                description=task.description,
+                                due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text('no_due_date', task.assignee.language_code),
+                                new_status=language_manager.get_text({
+                                    'pending': 'status_pending',
+                                    'in_progress': 'status_in_progress',
+                                    'done': 'status_done'
+                                }[new_status], task.assignee.language_code)
+                            )
+                        )
+                    elif not is_manager and task.creator:
+                        # If assignee changed status, notify manager
+                        print(f"Sending notification to manager {task.creator.id}")  # Debug log
+                        await callback.bot.send_message(
+                            chat_id=task.creator.telegram_id,
+                            text=language_manager.get_text(
+                                'status_change_manager',
+                                task.creator.language_code,
+                                team_name=task.team.name if task.team else language_manager.get_text("unknown", task.creator.language_code),
+                                task_id=str(task.id),
+                                assignee_name=f"{user.first_name} {user.last_name} (@{user.username})",
+                                description=task.description,
+                                due_date=task.due_date.strftime('%d.%m.%Y') if task.due_date else language_manager.get_text('no_due_date', task.creator.language_code),
+                                new_status=language_manager.get_text({
+                                    'pending': 'status_pending',
+                                    'in_progress': 'status_in_progress',
+                                    'done': 'status_done'
+                                }[new_status], task.creator.language_code)
+                            )
+                        )
+                except Exception as notify_error:
+                    print(f"Error sending notification: {notify_error}")  # Debug log
+                    # Don't raise the error, just log it - notification failure shouldn't affect the status update
+
                 await callback.answer()
-                
+
             except Exception as db_error:
-                print(f"Database error during status update: {db_error}")  # Debug log
+                print(f"Database error during status update: {str(db_error)}")  # Enhanced error logging
+                print(f"Error type: {type(db_error).__name__}")  # Log error type
                 await session.rollback()
                 raise
             
     except Exception as e:
-        print(f"Error in update_task_status: {e}")  # Debug log
+        print(f"Error in update_task_status: {str(e)}")  # Enhanced error logging
+        print(f"Error type: {type(e).__name__}")  # Log error type
         await callback.message.answer(
             language_manager.get_text("error_occurred", user.language_code)
         )
