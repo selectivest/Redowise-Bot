@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from taskmanager.database.models import User, Team, TeamMember, Task, UserRole
+from taskmanager.database.models import User, Team, TeamMember, Task, UserRole, TeamMemberRole
 from taskmanager.database.connection import async_session
 from taskmanager.notifications import NotificationSystem
 from taskmanager.languages.manager import language_manager
@@ -731,7 +731,7 @@ async def view_team_tasks(callback: CallbackQuery, user: User):
         query = select(TeamMember).where(
             TeamMember.team_id == team_id,
             TeamMember.user_id == user.id,
-            TeamMember.role == "Manager"
+            TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
         )
         result = await session.execute(query)
         is_manager = result.scalar_one_or_none() is not None
@@ -881,7 +881,7 @@ async def view_member_tasks(callback: CallbackQuery, user: User):
         query = select(TeamMember).where(
             TeamMember.team_id == team_id,
             TeamMember.user_id == user.id,
-            TeamMember.role == "Manager"
+            TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
         )
         result = await session.execute(query)
         is_manager = result.scalar_one_or_none() is not None
@@ -908,7 +908,7 @@ async def view_all_tasks(callback: CallbackQuery, user: User):
         query = select(TeamMember).where(
             TeamMember.team_id == team_id,
             TeamMember.user_id == user.id,
-            TeamMember.role == "Manager"
+            TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
         )
         result = await session.execute(query)
         is_manager = result.scalar_one_or_none() is not None
@@ -1208,7 +1208,7 @@ async def update_task_status(callback: CallbackQuery, user: User):
             team_member_query = select(TeamMember).where(
                 TeamMember.team_id == task.team_id,
                 TeamMember.user_id == user.id,
-                TeamMember.role == "Manager"
+                TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
             )
             team_member_result = await session.execute(team_member_query)
             is_manager = team_member_result.scalar_one_or_none() is not None
@@ -1248,7 +1248,7 @@ async def update_task_status(callback: CallbackQuery, user: User):
                 # Get manager info for notification
                 manager_query = select(User).join(TeamMember).where(
                     TeamMember.team_id == task.team_id,
-                    TeamMember.role == "Manager"
+                    TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
                 )
                 manager_result = await session.execute(manager_query)
                 manager = manager_result.scalar_one_or_none()
@@ -1474,7 +1474,7 @@ async def delete_task(callback: CallbackQuery, user: User):
             team_member_query = select(TeamMember).where(
                 TeamMember.team_id == task.team_id,
                 TeamMember.user_id == user.id,
-                TeamMember.role == "Manager"
+                TeamMember.role.in_([TeamMemberRole.OWNER, TeamMemberRole.MANAGER])
             )
             team_member_result = await session.execute(team_member_query)
             is_manager = team_member_result.scalar_one_or_none() is not None

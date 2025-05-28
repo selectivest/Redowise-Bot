@@ -9,6 +9,7 @@ from taskmanager.database.connection import async_session
 from taskmanager.languages.manager import language_manager
 from taskmanager.handlers.team import TeamStates
 from taskmanager.handlers.task import process_task_description, TaskStates
+from taskmanager.handlers.member_management import MemberManagementStates, start_member_management
 
 router = Router()
 
@@ -34,6 +35,7 @@ def get_keyboard_menu(user: User = None) -> ReplyKeyboardMarkup:
     buttons = [
         [KeyboardButton(text=language_manager.get_text("add_task", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("add_member", user.language_code))],
+        [KeyboardButton(text=language_manager.get_text("member_management", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("create_team", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("view_tasks", user.language_code))],
         [KeyboardButton(text=language_manager.get_text("help", user.language_code))]
@@ -114,6 +116,7 @@ async def process_language_selection(callback: CallbackQuery):
             keyboard.keyboard = [
                 [KeyboardButton(text=language_manager.get_text("add_task", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("add_member", lang_code))],
+                [KeyboardButton(text=language_manager.get_text("member_management", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("create_team", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("view_tasks", lang_code))],
                 [KeyboardButton(text=language_manager.get_text("help", lang_code))]
@@ -173,6 +176,7 @@ async def handle_menu_button(message: Message, state: FSMContext, user: User):
         # Get user-specific text for menu options
         create_team_text = language_manager.get_text("create_team", user.language_code)
         add_member_text = language_manager.get_text("add_member", user.language_code)
+        member_management_text = language_manager.get_text("member_management", user.language_code)
         add_task_text = language_manager.get_text("add_task", user.language_code)
         view_tasks_text = language_manager.get_text("view_tasks", user.language_code)
         
@@ -187,37 +191,26 @@ async def handle_menu_button(message: Message, state: FSMContext, user: User):
             print(f"User is in state {current_state}, skipping menu button handling")
             return
         
+        # Handle menu button clicks
         if message.text == create_team_text:
             await state.set_state(TeamStates.waiting_for_team_name)
             await message.answer(
                 language_manager.get_text("team_name_prompt", user.language_code)
             )
-        
         elif message.text == add_member_text:
-            # Get user's teams where they are a manager
-            async with async_session() as session:
-                query = select(Team).join(TeamMember).where(
-                    TeamMember.user_id == user.id,
-                    TeamMember.role == "Manager"
-                )
-                result = await session.execute(query)
-                teams = result.scalars().all()
-                
-                if not teams:
-                    await message.answer(
-                        language_manager.get_text("not_authorized", user.language_code)
-                    )
-                    return
-            
             await state.set_state(TeamStates.waiting_for_member_username)
             await message.answer(
-                language_manager.get_text("member_username_prompt", user.language_code)
+                language_manager.get_text("enter_username", user.language_code)
             )
-        
+        elif message.text == member_management_text:
+            # Start member management process
+            await start_member_management(message, state)
         elif message.text == add_task_text:
             async with async_session() as session:
-                # Get user's teams
-                query = select(Team).join(TeamMember).where(TeamMember.user_id == user.id)
+                # Get user's teams (any role)
+                query = select(Team).join(TeamMember).where(
+                    TeamMember.user_id == user.id
+                )
                 result = await session.execute(query)
                 teams = result.scalars().all()
                 

@@ -8,6 +8,7 @@ Base = declarative_base()
 class UserRole(enum.Enum):
     MANAGER = "manager"
     MEMBER = "member"
+    OWNER = "owner"
 
 class User(Base):
     __tablename__ = 'users'
@@ -36,13 +37,18 @@ class Team(Base):
     members = relationship("TeamMember", back_populates="team")
     tasks = relationship("Task", back_populates="team")
 
+class TeamMemberRole(enum.Enum):
+    OWNER = "Owner"
+    MANAGER = "Manager"
+    MEMBER = "Member"
+
 class TeamMember(Base):
     __tablename__ = 'team_members'
     
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey('teams.id', ondelete='CASCADE'))
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
-    role = Column(String, nullable=False)  # e.g., "Manager", "Member"
+    role = Column(Enum(TeamMemberRole), nullable=False, default=TeamMemberRole.MEMBER)
     
     # Relationships
     team = relationship("Team", back_populates="members")
@@ -51,6 +57,11 @@ class TeamMember(Base):
     __table_args__ = (
         UniqueConstraint('team_id', 'user_id', name='uix_team_user'),
     )
+    
+    @property
+    def is_Owner(self):
+        """Check if the member is the Owner of the team"""
+        return self.role == TeamMemberRole.OWNER
 
 class Task(Base):
     __tablename__ = 'tasks'

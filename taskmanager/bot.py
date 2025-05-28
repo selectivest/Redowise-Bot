@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from taskmanager.config import Config
 from taskmanager.database.models import Base, User
 from taskmanager.database.connection import engine, async_session
-from taskmanager.handlers import user, team, task
+from taskmanager.handlers import user, team, task, member_management
 from taskmanager.middlewares.auth import AuthMiddleware
 from taskmanager.middlewares.user import UserMiddleware
 from taskmanager.languages.manager import language_manager
@@ -44,6 +44,7 @@ dp.callback_query.middleware(UserMiddleware())
 dp.include_router(team.router)
 dp.include_router(task.router)
 dp.include_router(user.router)
+dp.include_router(member_management.router)
 
 async def main():
     # Create database tables

@@ -4,11 +4,21 @@ import asyncio
 import importlib
 import os
 import sys
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import sessionmaker
 from .connection import async_session
+from .migrations.create_all_tables import upgrade
+from dotenv import load_dotenv
+from taskmanager.config import Config
+
+# Load environment variables
+load_dotenv()
 
 MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), "migrations")
+
+# Get database URL from environment
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///taskmanager.db')
 
 async def get_current_version(session: AsyncSession) -> int:
     """Get the current database version."""
@@ -46,5 +56,11 @@ async def run_migrations() -> None:
                 print("Migration (up) completed.")
         sys.path.pop(0)
 
+def run_migration():
+    engine = create_engine(DATABASE_URL)
+    with engine.connect() as connection:
+        upgrade(connection)
+        print("Migration complete: All tables created.")
+
 if __name__ == "__main__":
-    asyncio.run(run_migrations()) 
+    run_migration() 

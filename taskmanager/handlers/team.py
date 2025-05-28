@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select
-from taskmanager.database.models import User, Team, TeamMember, UserRole
+from taskmanager.database.models import User, Team, TeamMember, UserRole, TeamMemberRole
 from taskmanager.database.connection import async_session
 from taskmanager.languages.manager import language_manager
 import uuid
@@ -71,15 +71,15 @@ async def process_team_name(message: Message, state: FSMContext, user: User):
                 await session.flush()  # Flush to get the team ID
                 print(f"Team created with ID: {team.id}")  # Debug log
                 
-                # Add creator as team member with Manager role
+                # Add creator as team member with Owner role
                 team_member = TeamMember(
                     team_id=team.id,
                     user_id=user.id,
-                    role="Manager"
+                    role=TeamMemberRole.OWNER
                 )
                 session.add(team_member)
                 await session.commit()
-                print("Team member added and transaction committed")  # Debug log
+                print(f"DEBUG: Created team member: user_id={team_member.user_id}, team_id={team_member.team_id}, role={team_member.role}")
             except Exception as db_error:
                 print(f"Database error: {db_error}")  # Debug log
                 await session.rollback()
@@ -113,11 +113,11 @@ async def process_team_name(message: Message, state: FSMContext, user: User):
 async def cmd_add_member(message: Message, state: FSMContext, user: User):
     await state.clear()  # Clear any existing state
     
-    # Get user's teams where they are a manager
+    # Get user's teams where they are an Owner
     async with async_session() as session:
         query = select(Team).join(TeamMember).where(
             TeamMember.user_id == user.id,
-            TeamMember.role == "Manager"
+            TeamMember.role == TeamMemberRole.OWNER
         )
         result = await session.execute(query)
         teams = result.scalars().all()
@@ -156,10 +156,10 @@ async def process_member_username(message: Message, state: FSMContext, user: Use
                 await state.clear()
                 return
             
-            # Get user's teams where they are a manager
+            # Get user's teams where they are an Owner
             query = select(Team).join(TeamMember).where(
                 TeamMember.user_id == user.id,
-                TeamMember.role == "Manager"
+                TeamMember.role == TeamMemberRole.OWNER
             )
             result = await session.execute(query)
             teams = result.scalars().all()
@@ -363,7 +363,7 @@ async def process_invitation_accept(callback: CallbackQuery):
             team_member = TeamMember(
                 team_id=invitation['team_id'],
                 user_id=invitation['member_id'],
-                role="Member"
+                role=TeamMemberRole.MEMBER
             )
             session.add(team_member)
             await session.commit()

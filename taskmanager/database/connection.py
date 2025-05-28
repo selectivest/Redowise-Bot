@@ -1,13 +1,18 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 import os
+from dotenv import load_dotenv
+from typing import AsyncGenerator
 
-# Get the absolute path to the database file
-db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'taskmanager.db')
+# Load environment variables
+load_dotenv()
+
+# Get database URL from environment
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///taskmanager.db')
 
 # Create async engine
 engine = create_async_engine(
-    f'sqlite+aiosqlite:///{db_path}',
+    DATABASE_URL.replace('sqlite:///', 'sqlite+aiosqlite:///'),
     echo=True,
     future=True,
     connect_args={"check_same_thread": False}  # Allow multiple threads to access the database
@@ -22,6 +27,6 @@ async_session = sessionmaker(
     autoflush=False  # Ensure flushes are explicit
 )
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session 
