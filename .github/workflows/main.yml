@@ -1,0 +1,79 @@
+#
+name: build and push redowise-bot
+
+on:
+  push:
+    branches:
+      - develop
+
+  pull_request:
+  # This creates an environment variable called `IMAGE_NAME ` with the value `ghtoken_product_demo`.
+env:
+  BACKEND_IMAGE_NAME: redowise-bot
+  DEPLOY_PATH: /home/deployer/redowise
+  SSH: deployer@65.109.211.35 -p1998
+
+
+#
+jobs:
+  # This pushes the image to GitHub Packages.
+  build-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      #
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build bot
+        run: docker build .  --tag $BACKEND_IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
+      # - name: Configure Docker daemon for insecure registry
+      #   run: |
+      #     echo '{"insecure-registries":["${{ secrets.SONAY_DOCKER_REGISTRY_URL }}"]}' | sudo tee /etc/docker/daemon.json
+      #     sudo systemctl restart docker
+      # - name: Log in to Docker registry
+      #   uses: docker/login-action@v2
+      #   with:
+      #     username: ${{ secrets.SONAY_DOCKER_REGISTRY_USERNAME }}
+      #     password: ${{ secrets.SONAY_DOCKER_REGISTRY_PASSWORD }}
+      #     registry: ${{ secrets.SONAY_DOCKER_REGISTRY_URL }}
+      - name: Log in to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
+      - name: Push image
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$BACKEND_IMAGE_NAME
+
+          # This changes all uppercase characters to lowercase.
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+         
+          echo IMAGE_ID=$IMAGE_ID
+          docker tag $BACKEND_IMAGE_NAME $IMAGE_ID:latest
+          docker push $IMAGE_ID:latest 
+ 
+ 
+  deploy-bot:
+    runs-on: ubuntu-latest
+    needs: [ build-bot ]
+    permissions:
+      packages: write
+      contents: read
+      #
+    steps:
+  
+      - name: prepare ssh 
+        run: |
+            which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )
+            eval $(ssh-agent -s)
+            ssh-add <(echo "${{ secrets.SSH_PRIVATE_KEY_STAGE }}")
+            mkdir -p ~/.ssh
+            echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+            ssh $SSH "
+              # docker login localhost:5000 -u ${{ secrets.SONAY_DOCKER_REGISTRY_USERNAME }} -p ${{ secrets.SONAY_DOCKER_REGISTRY_PASSWORD }}
+              echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
+              cd $DEPLOY_PATH
+              docker-compose pull
+              docker-compose down && docker-compose up -d
+              docker system prune -a --force   
+              "
+  
